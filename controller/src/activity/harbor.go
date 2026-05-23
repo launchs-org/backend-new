@@ -83,8 +83,12 @@ func (a *HarborActivity) HarborCreateRobotAccount(ctx context.Context, projectNa
 	return &RobotAccountResult{Username: result.Name, Password: result.Secret}, nil
 }
 
-// HarborDeleteProject は Harbor プロジェクトを削除します。
+// HarborDeleteProject はプロジェクト内の全リポジトリを削除してからプロジェクトを削除します。
 func (a *HarborActivity) HarborDeleteProject(ctx context.Context, projectName string) error {
+	if err := harborDeleteAllRepositories(ctx, projectName); err != nil {
+		return err
+	}
+
 	resp, err := harborRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v2.0/projects/%s", projectName), nil)
 	if err != nil {
 		return fmt.Errorf("Harbor プロジェクト削除エラー: %w", err)
@@ -94,6 +98,55 @@ func (a *HarborActivity) HarborDeleteProject(ctx context.Context, projectName st
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Harbor プロジェクト削除失敗 status=%d body=%s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// harborDeleteAllRepositories はプロジェクト内の全リポジトリをページネーションしながら削除します。
+func harborDeleteAllRepositories(ctx context.Context, projectName string) error {
+	for page := 1; ; page++ {
+		path := fmt.Sprintf("/api/v2.0/projects/%s/repositories?page=%d&page_size=100", projectName, page)
+		resp, err := harborRequest(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return fmt.Errorf("Harbor リポジトリ一覧取得エラー: %w", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("Harbor リポジトリ一覧取得失敗 status=%d", resp.StatusCode)
+		}
+
+		var repos []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(body, &repos); err != nil {
+			return fmt.Errorf("Harbor リポジトリ一覧パースエラー: %w", err)
+		}
+		if len(repos) == 0 {
+			break
+		}
+
+		for _, repo := range repos {
+			// repo.Name は "projectName/repoName" 形式なのでエンコードして使う
+			repoName := repo.Name[len(projectName)+1:]
+			delResp, err := harborRequest(ctx, http.MethodDelete,
+				fmt.Sprintf("/api/v2.0/projects/%s/repositories/%s", projectName, repoName), nil)
+			if err != nil {
+				return fmt.Errorf("Harbor リポジトリ削除エラー %s: %w", repoName, err)
+			}
+			delResp.Body.Close()
+			if delResp.StatusCode != http.StatusOK && delResp.StatusCode != http.StatusNotFound {
+				return fmt.Errorf("Harbor リポジトリ削除失敗 %s status=%d", repoName, delResp.StatusCode)
+			}
+		}
+
+		if len(repos) < 100 {
+			break
+		}
 	}
 	return nil
 }
