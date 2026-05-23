@@ -252,6 +252,7 @@ func (s *templateService) Get(ctx context.Context, name string) (*TemplateDetail
 			Icon:        tf.Icon,
 			Color:       tf.Color,
 		},
+		Image:   tf.Image,
 		EnvVars: tf.EnvVars,
 		Volume:  tf.Volume,
 	}, nil

@@ -31,6 +31,7 @@ type TemplateVolumeDef struct {
 // TemplateDetail はテンプレートの詳細情報です。
 type TemplateDetail struct {
 	TemplateSummary
+	Image   string             `json:"image"`
 	EnvVars []TemplateEnvVarDef `json:"env_vars"`
 	Volume  *TemplateVolumeDef  `json:"volume"`
 }

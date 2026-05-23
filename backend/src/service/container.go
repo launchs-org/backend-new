@@ -59,15 +59,35 @@ type DeleteContainerWorkflowInput struct {
 	DeploymentName string `json:"DeploymentName"`
 }
 
-// DeployTemplateWorkflowInput はテンプレートデプロイの入力です。
-type DeployTemplateWorkflowInput struct {
-	ContainerID  string            `json:"container_id"`
-	ProjectID    string            `json:"project_id"`
-	TemplateName string            `json:"template_name"`
-	ResourceSize string            `json:"resource_size"`
-	Params       map[string]string `json:"params"`
-	VolumeID     *string           `json:"volume_id"`
-	MountPath    *string           `json:"mount_path"`
+// DeployWorkflowInput は DeployWorkflow への入力です。
+type DeployWorkflowInput struct {
+	ContainerID    string              `json:"ContainerID"`
+	Namespace      string              `json:"Namespace"`
+	DeploymentName string              `json:"DeploymentName"`
+	ImageRef       string              `json:"ImageRef"`
+	Replicas       int                 `json:"Replicas"`
+	ResourceSize   string              `json:"ResourceSize"`
+	EnvVars        []EnvVarWorkflow    `json:"EnvVars"`
+	Ports          []PortWorkflow      `json:"Ports"`
+	VolumeMounts   []VolumeMountWorkflow `json:"VolumeMounts"`
+}
+
+// EnvVarWorkflow はワークフロー用環境変数です。
+type EnvVarWorkflow struct {
+	Key   string `json:"Key"`
+	Value string `json:"Value"`
+}
+
+// PortWorkflow はワークフロー用ポートです。
+type PortWorkflow struct {
+	Port     int    `json:"Port"`
+	Protocol string `json:"Protocol"`
+}
+
+// VolumeMountWorkflow はワークフロー用ボリュームマウントです。
+type VolumeMountWorkflow struct {
+	PVCName   string `json:"PVCName"`
+	MountPath string `json:"MountPath"`
 }
 
 type containerService struct {
@@ -76,6 +96,8 @@ type containerService struct {
 	envVarRepo    repository.EnvVarRepository
 	portRepo      repository.PortRepository
 	buildJobRepo  repository.BuildJobRepository
+	volumeRepo    repository.VolumeRepository
+	templateSvc   TemplateService
 	temporal      client.Client
 }
 
@@ -86,6 +108,8 @@ func NewContainerService(
 	envVarRepo repository.EnvVarRepository,
 	portRepo repository.PortRepository,
 	buildJobRepo repository.BuildJobRepository,
+	volumeRepo repository.VolumeRepository,
+	templateSvc TemplateService,
 	temporalClient client.Client,
 ) ContainerService {
 	return &containerService{
@@ -94,6 +118,8 @@ func NewContainerService(
 		envVarRepo:    envVarRepo,
 		portRepo:      portRepo,
 		buildJobRepo:  buildJobRepo,
+		volumeRepo:    volumeRepo,
+		templateSvc:   templateSvc,
 		temporal:      temporalClient,
 	}
 }
@@ -253,9 +279,14 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 }
 
 func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (*model.Container, string, error) {
-	_, err := s.projectRepo.FindByID(ctx, projectID)
+	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
 		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+	}
+
+	tmpl, err := s.templateSvc.Get(ctx, req.TemplateName)
+	if err != nil {
+		return nil, "", fmt.Errorf("template not found: %s", req.TemplateName)
 	}
 
 	containerID := uuid.New()
@@ -276,19 +307,42 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		return nil, "", fmt.Errorf("failed to create container: %w", err)
 	}
 
-	input := DeployTemplateWorkflowInput{
-		ContainerID:  containerID.String(),
-		ProjectID:    projectID.String(),
-		TemplateName: req.TemplateName,
-		ResourceSize: resourceSize,
-		Params:       req.Params,
+	// 環境変数をテンプレートデフォルト + ユーザー指定で組み立て
+	envVars := make([]EnvVarWorkflow, 0, len(tmpl.EnvVars))
+	for _, ev := range tmpl.EnvVars {
+		val := ev.Default
+		if v, ok := req.Params[ev.Key]; ok && v != "" {
+			val = v
+		}
+		envVars = append(envVars, EnvVarWorkflow{Key: ev.Key, Value: val})
 	}
-	if req.VolumeID != nil {
-		s := req.VolumeID.String()
-		input.VolumeID = &s
+
+	// ボリュームマウント
+	volumeMounts := make([]VolumeMountWorkflow, 0)
+	if req.VolumeID != nil && req.MountPath != nil {
+		mountPath := *req.MountPath
+		if mountPath == "" && tmpl.Volume != nil {
+			mountPath = tmpl.Volume.MountPath
+		}
+		// VolumeのDB情報からPVC名を取得
+		vol, volErr := s.volumeRepo.FindByID(ctx, *req.VolumeID)
+		if volErr == nil {
+			pvcName := fmt.Sprintf("%s-%s", vol.Name, req.VolumeID.String())
+			volumeMounts = append(volumeMounts, VolumeMountWorkflow{PVCName: pvcName, MountPath: mountPath})
+		}
 	}
-	if req.MountPath != nil {
-		input.MountPath = req.MountPath
+
+	deploymentName := fmt.Sprintf("%s-%s", container.Name, containerID.String())
+	input := DeployWorkflowInput{
+		ContainerID:    containerID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: deploymentName,
+		ImageRef:       tmpl.Image,
+		Replicas:       1,
+		ResourceSize:   resourceSize,
+		EnvVars:        envVars,
+		Ports:          []PortWorkflow{},
+		VolumeMounts:   volumeMounts,
 	}
 
 	wfOpts := client.StartWorkflowOptions{

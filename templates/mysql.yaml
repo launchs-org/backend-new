@@ -1,0 +1,35 @@
+name: mysql
+display_name: MySQL
+category: Database
+description: 世界で最も普及しているオープンソースのリレーショナルデータベース
+version: "8"
+icon: database
+color: "#4479A1"
+image: mysql:8-debian
+env_vars:
+  - key: MYSQL_DATABASE
+    required: true
+    description: データベース名
+    auto_generate: false
+    default: mydb
+  - key: MYSQL_USER
+    required: true
+    description: ユーザー名
+    auto_generate: false
+    default: myuser
+  - key: MYSQL_PASSWORD
+    required: true
+    description: パスワード
+    auto_generate: true
+    generate_type: password
+    default: ""
+  - key: MYSQL_ROOT_PASSWORD
+    required: true
+    description: rootパスワード
+    auto_generate: true
+    generate_type: password
+    default: ""
+volume:
+  required: false
+  mount_path: /var/lib/mysql
+  default_size_mb: 10240

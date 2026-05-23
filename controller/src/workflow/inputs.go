@@ -139,3 +139,14 @@ type BuildDeployInput struct {
 	ContainerID uuid.UUID
 	ProjectID   uuid.UUID
 }
+
+// DeployTemplateInput は DeployTemplateWorkflow への入力です。
+type DeployTemplateInput struct {
+	ContainerID  uuid.UUID
+	ProjectID    string
+	TemplateName string
+	ResourceSize string
+	Params       map[string]string
+	VolumeID     *string
+	MountPath    *string
+}

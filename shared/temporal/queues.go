@@ -28,4 +28,5 @@ const (
 	WorkflowUnmountVolume   = "UnmountVolumeWorkflow"
 	WorkflowRestoreSnapshot = "RestoreSnapshotWorkflow"
 	WorkflowBuild           = "BuildWorkflow"
+	WorkflowDeployTemplate  = "DeployTemplateWorkflow"
 )

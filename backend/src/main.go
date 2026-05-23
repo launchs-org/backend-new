@@ -65,7 +65,8 @@ func main() {
 
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, snapshotRepo, temporalClient)
-	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, temporalClient)
+	templateSvc := service.NewTemplateService(templateDir)
+	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, templateSvc, temporalClient)
 	envVarSvc := service.NewEnvVarService(projectRepo, containerRepo, envVarRepo)
 	portSvc := service.NewPortService(projectRepo, containerRepo, portRepo)
 	routeSvc := service.NewRouteService(projectRepo, containerRepo, routeRepo, temporalClient)
@@ -73,7 +74,6 @@ func main() {
 	logSvc := service.NewLogService(projectRepo, containerRepo, buildJobRepo, logRepo)
 	metricSvc := service.NewMetricService(projectRepo, containerRepo, metricRepo)
 	buildJobSvc := service.NewBuildJobService(projectRepo, containerRepo, buildJobRepo, temporalClient)
-	templateSvc := service.NewTemplateService(templateDir)
 	snapshotSvc := service.NewSnapshotService(projectRepo, containerRepo, snapshotRepo, temporalClient)
 	connectionSvc := service.NewConnectionService(projectRepo, connectionRepo)
 
