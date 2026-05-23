@@ -23,6 +23,7 @@ services:
       - auth
     networks:
       - default
+      - host_network
 
   # ─── Frontend（React 開発サーバー）────────────────────────────────────────
   frontend:
@@ -38,6 +39,7 @@ services:
     restart: always
     networks:
       - default
+      - host_network
 
   # ─── Backend API ──────────────────────────────────────────────────────────
   app:
@@ -68,6 +70,8 @@ services:
         condition: service_healthy
     networks:
       - default
+      - host_network
+      - temporal-network
 
   # ─── Controller（Temporal ワーカー / K8s リソース管理）───────────────────
   controller:
@@ -93,6 +97,7 @@ services:
         condition: service_started
     networks:
       - default
+      - host_network
       - temporal-network
 
   # ─── Builder（Temporal ワーカー / railpack ビルド）───────────────────────
@@ -162,6 +167,7 @@ services:
     networks:
       - default
       - host_network
+      - temporal-network
 
   # ─── Auth（authbase 認証サービス）────────────────────────────────────────
   auth:
@@ -178,6 +184,7 @@ services:
         condition: service_completed_successfully
     networks:
       - default
+      - host_network
 
   # ─── Auth マイグレーション（一回限り実行）────────────────────────────────
   migrate:
@@ -190,3 +197,4 @@ services:
         condition: service_healthy
     networks:
       - default
+      - host_network
