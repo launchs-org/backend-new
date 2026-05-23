@@ -44,12 +44,8 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 		// ボリュームマウントを変換
 		mounts := make([]activity.VolumeMount, 0, len(c.Mounts))
 		for _, m := range c.Mounts {
-			volIDShort := m.VolumeID
-			if len(volIDShort) > 8 {
-				volIDShort = volIDShort[:8]
-			}
 			mounts = append(mounts, activity.VolumeMount{
-				PVCName:   fmt.Sprintf("%s-%s", c.ContainerName, volIDShort),
+				PVCName:   fmt.Sprintf("%s-%s", c.ContainerName, m.VolumeID),
 				MountPath: m.MountPath,
 			})
 		}
@@ -57,15 +53,10 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 		// ContainerID を uuid.UUID にパース
 		containerID, _ := uuid.Parse(c.ContainerID)
 
-		idShort := c.ContainerID
-		if len(idShort) > 8 {
-			idShort = idShort[:8]
-		}
-
 		deployInput := DeployInput{
 			ContainerID:    containerID,
 			Namespace:      input.Namespace,
-			DeploymentName: fmt.Sprintf("%s-%s", c.ContainerName, idShort),
+			DeploymentName: fmt.Sprintf("%s-%s", c.ContainerName, c.ContainerID),
 			ImageRef:       c.ImageTag,
 			Replicas:       c.Replicas,
 			ResourceSize:   c.ResourceSize,

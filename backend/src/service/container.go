@@ -329,7 +329,7 @@ func (s *containerService) Scale(ctx context.Context, projectID, containerID uui
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowScale, ScaleWorkflowInput{
 		ContainerID:    containerID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()),
 		Replicas:       replicas,
 	})
 	if err != nil {
@@ -365,7 +365,7 @@ func (s *containerService) Redeploy(ctx context.Context, projectID, containerID 
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    containerID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start RedeployWorkflow: %w", err)
@@ -484,7 +484,7 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		ContainerID:    containerID.String(),
 		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start DeleteContainerWorkflow: %w", err)
@@ -546,7 +546,7 @@ func (s *containerService) HandleWebhook(ctx context.Context, token string) erro
 	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    container.ID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", container.Name, container.ID.String()[:8]),
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, container.ID.String()),
 	})
 	return err
 }

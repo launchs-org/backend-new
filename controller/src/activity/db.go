@@ -141,13 +141,13 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 		if err := database.DB.WithContext(ctx).First(&vol, "id = ?", m.VolumeID).Error; err != nil {
 			continue
 		}
-		pvcName := fmt.Sprintf("%s-%s", vol.Name, m.VolumeID.String()[:8])
+		pvcName := fmt.Sprintf("%s-%s", vol.Name, m.VolumeID.String())
 		volumeMounts = append(volumeMounts, VolumeMount{PVCName: pvcName, MountPath: m.MountPath})
 	}
 
 	return DeploymentSpec{
 		Namespace:     namespace,
-		Name:          fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
+		Name:          fmt.Sprintf("%s-%s", container.Name, containerID.String()),
 		Image:         imageRef,
 		Replicas:      container.Replicas,
 		CPURequest:    size.CPURequest,

@@ -15,12 +15,12 @@ import (
 
 // serviceResourceName は routeID から Service の k8s リソース名を生成します。
 func serviceResourceName(routeID uuid.UUID) string {
-	return fmt.Sprintf("svc-%s", routeID.String()[:8])
+	return fmt.Sprintf("svc-%s", routeID.String())
 }
 
 // ingressResourceName は routeID から IngressRoute の k8s リソース名を生成します。
 func ingressResourceName(routeID uuid.UUID) string {
-	return fmt.Sprintf("ingress-%s", routeID.String()[:8])
+	return fmt.Sprintf("ingress-%s", routeID.String())
 }
 
 type routeService struct {

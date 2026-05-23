@@ -15,7 +15,7 @@ import (
 
 // pvcResourceName は volumeID から PVC の k8s リソース名を生成します。
 func pvcResourceName(name string, volumeID uuid.UUID) string {
-	return fmt.Sprintf("%s-%s", name, volumeID.String()[:8])
+	return fmt.Sprintf("%s-%s", name, volumeID.String())
 }
 
 type volumeService struct {
