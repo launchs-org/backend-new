@@ -1,0 +1,9 @@
+name: nginx
+display_name: Nginx
+category: Web Server
+description: 高性能な HTTP サーバー・リバースプロキシ
+version: "1.25"
+icon: server
+color: "#009900"
+image: nginx:1.25-alpine
+env_vars: []

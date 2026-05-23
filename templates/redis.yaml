@@ -1,0 +1,13 @@
+name: redis
+display_name: Redis
+category: Cache
+description: インメモリデータ構造ストア
+version: "7"
+icon: zap
+color: "#DC382D"
+image: redis:7-alpine
+env_vars: []
+volume:
+  required: false
+  mount_path: /data
+  default_size_mb: 2048

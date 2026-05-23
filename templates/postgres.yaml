@@ -1,0 +1,29 @@
+name: postgres
+display_name: PostgreSQL
+category: Database
+description: オープンソースのリレーショナルデータベース
+version: "16"
+icon: database
+color: "#336791"
+image: postgres:16-alpine
+env_vars:
+  - key: POSTGRES_DB
+    required: true
+    description: データベース名
+    auto_generate: false
+    default: mydb
+  - key: POSTGRES_USER
+    required: true
+    description: ユーザー名
+    auto_generate: false
+    default: postgres
+  - key: POSTGRES_PASSWORD
+    required: true
+    description: パスワード
+    auto_generate: true
+    generate_type: password
+    default: ""
+volume:
+  required: false
+  mount_path: /var/lib/postgresql/data
+  default_size_mb: 10240
