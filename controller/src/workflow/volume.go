@@ -62,7 +62,13 @@ func MountVolumeWorkflow(ctx workflow.Context, input MountVolumeInput) error {
 		return err
 	}
 
-	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, input.DeploySpec).Get(ctx, nil); err != nil {
+	var spec activity.DeploymentSpec
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBBuildDeploySpec, input.ContainerID, input.Namespace).Get(ctx, &spec); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+		return err
+	}
+
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, spec).Get(ctx, nil); err != nil {
 		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}
@@ -87,7 +93,13 @@ func UnmountVolumeWorkflow(ctx workflow.Context, input UnmountVolumeInput) error
 		return err
 	}
 
-	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, input.DeploySpec).Get(ctx, nil); err != nil {
+	var spec activity.DeploymentSpec
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBBuildDeploySpec, input.ContainerID, input.Namespace).Get(ctx, &spec); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+		return err
+	}
+
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, spec).Get(ctx, nil); err != nil {
 		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}

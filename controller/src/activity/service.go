@@ -41,7 +41,7 @@ func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) er
 		Spec: corev1.ServiceSpec{
 			Selector: spec.SelectorLabels,
 			Ports:    ports,
-			Type:     corev1.ServiceTypeClusterIP,
+			Type:     corev1.ServiceTypeLoadBalancer,
 		},
 	}
 
@@ -58,7 +58,7 @@ func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) er
 	}
 
 	svc.ResourceVersion = existing.ResourceVersion
-	svc.Spec.ClusterIP = existing.Spec.ClusterIP // ClusterIP は不変なので引き継ぐ
+	svc.Spec.LoadBalancerIP = existing.Spec.LoadBalancerIP // LoadBalancerIP は不変なので引き継ぐ
 	_, err = k8s.CoreV1().Services(spec.Namespace).Update(ctx, svc, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("Service 更新エラー: %w", err)

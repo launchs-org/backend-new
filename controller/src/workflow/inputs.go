@@ -77,16 +77,21 @@ type DeleteVolumeInput struct {
 }
 
 // MountVolumeInput は MountVolumeWorkflow への入力です。
-// マウント後に Deployment を再 Apply します。
+// ワークフロー内で DB からコンテナ情報を取得して Deployment を再 Apply します。
 type MountVolumeInput struct {
 	ContainerID uuid.UUID
-	DeploySpec  activity.DeploymentSpec
+	Namespace   string
+	VolumeID    uuid.UUID
+	PVCName     string
+	MountPath   string
 }
 
 // UnmountVolumeInput は UnmountVolumeWorkflow への入力です。
 type UnmountVolumeInput struct {
 	ContainerID uuid.UUID
-	DeploySpec  activity.DeploymentSpec
+	Namespace   string
+	VolumeID    uuid.UUID
+	PVCName     string
 }
 
 // CreateServiceInput は CreateServiceWorkflow への入力です。

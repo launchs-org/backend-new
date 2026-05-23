@@ -39,10 +39,10 @@ func (a *IngressActivity) IngressApply(ctx context.Context, spec IngressSpec) er
 				},
 			},
 			"spec": map[string]interface{}{
-				"entryPoints": []interface{}{"websecure"},
+				"entryPoints": []interface{}{"web", "websecure"},
 				"routes": []interface{}{
 					map[string]interface{}{
-						"match": fmt.Sprintf("Host(`%s`)", spec.Host),
+						"match": fmt.Sprintf("Host(`%s`) && PathPrefix(`/`)", spec.Host),
 						"kind":  "Rule",
 						"services": []interface{}{
 							map[string]interface{}{
@@ -51,9 +51,6 @@ func (a *IngressActivity) IngressApply(ctx context.Context, spec IngressSpec) er
 							},
 						},
 					},
-				},
-				"tls": map[string]interface{}{
-					"certResolver": "default",
 				},
 			},
 		},
