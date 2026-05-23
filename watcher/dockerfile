@@ -1,0 +1,27 @@
+FROM golang:1.26-bookworm AS develop
+
+RUN apt update && apt install curl wget git iproute2 -y
+
+WORKDIR /app
+
+COPY ./watcher/src/go.mod ./watcher/src/go.sum ./
+COPY ./shared /shared
+
+RUN go mod download
+
+RUN go install github.com/air-verse/air@latest
+
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /go/src/app
+
+COPY ./src .
+COPY --from=shared . /shared
+
+RUN go mod download
+
+RUN CGO_ENABLED=0 go build -o /go/bin/app .
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=builder /go/bin/app /app
+CMD ["/app"]
