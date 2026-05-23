@@ -82,25 +82,44 @@ func (c *StatusCollector) upsertPodStatus(ctx context.Context, pod *corev1.Pod, 
 	ready := isPodReady(pod)
 	restartCount := getPodRestartCount(pod)
 
-	podStatus := &model.PodStatus{
-		ContainerID:  containerID,
-		PodName:      pod.Name,
-		Status:       status,
-		Ready:        ready,
-		RestartCount: restartCount,
-		NodeName:     pod.Spec.NodeName,
-		UpdatedAt:    time.Now(),
-	}
+	now := time.Now()
+	var startedAt *time.Time
 	if pod.Status.StartTime != nil {
 		t := pod.Status.StartTime.Time
-		podStatus.StartedAt = &t
+		startedAt = &t
 	}
 
-	// ON CONFLICT (pod_name) DO UPDATE
-	database.DB.WithContext(ctx).
+	// 既存レコードを pod_name で検索し、あれば UPDATE、なければ INSERT
+	var existing model.PodStatus
+	err := database.DB.WithContext(ctx).
 		Where("pod_name = ?", pod.Name).
-		Assign(podStatus).
-		FirstOrCreate(&model.PodStatus{ID: uuid.New()})
+		First(&existing).Error
+
+	if err != nil {
+		// 存在しない → INSERT
+		database.DB.WithContext(ctx).Create(&model.PodStatus{
+			ID:           uuid.New(),
+			ContainerID:  containerID,
+			PodName:      pod.Name,
+			Status:       status,
+			Ready:        ready,
+			RestartCount: restartCount,
+			NodeName:     pod.Spec.NodeName,
+			StartedAt:    startedAt,
+			UpdatedAt:    now,
+		})
+	} else {
+		// 存在する → UPDATE
+		database.DB.WithContext(ctx).Model(&existing).Updates(map[string]interface{}{
+			"container_id":  containerID,
+			"status":        status,
+			"ready":         ready,
+			"restart_count": restartCount,
+			"node_name":     pod.Spec.NodeName,
+			"started_at":    startedAt,
+			"updated_at":    now,
+		})
+	}
 }
 
 // deletePodStatus は pod_statuses テーブルから削除します。
@@ -112,20 +131,41 @@ func (c *StatusCollector) deletePodStatus(ctx context.Context, podName string) {
 
 // updateContainerReplicas は pod_statuses から集計して containers を更新します。
 func (c *StatusCollector) updateContainerReplicas(ctx context.Context, containerID uuid.UUID) {
-	var readyCount, failedCount int64
+	var readyCount, failedCount, runningCount int64
 	database.DB.WithContext(ctx).Model(&model.PodStatus{}).
 		Where("container_id = ? AND ready = ?", containerID, true).
 		Count(&readyCount)
 	database.DB.WithContext(ctx).Model(&model.PodStatus{}).
 		Where("container_id = ? AND status = ?", containerID, "failed").
 		Count(&failedCount)
+	database.DB.WithContext(ctx).Model(&model.PodStatus{}).
+		Where("container_id = ? AND status = ?", containerID, "running").
+		Count(&runningCount)
+
+	updates := map[string]interface{}{
+		"ready_replicas":  readyCount,
+		"failed_replicas": failedCount,
+	}
+
+	// Pod の状態からコンテナステータスを導出する
+	// deploying/building/scaling 中はワークフローが管理するため上書きしない
+	var container model.Container
+	if err := database.DB.WithContext(ctx).Select("status").Where("id = ?", containerID).First(&container).Error; err == nil {
+		managedByWorkflow := container.Status == "building" || container.Status == "deploying" || container.Status == "scaling"
+		if !managedByWorkflow {
+			if failedCount > 0 && runningCount == 0 {
+				updates["status"] = "failed"
+			} else if runningCount > 0 {
+				updates["status"] = "running"
+			} else {
+				updates["status"] = "pending"
+			}
+		}
+	}
 
 	database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
-		Updates(map[string]interface{}{
-			"ready_replicas":  readyCount,
-			"failed_replicas": failedCount,
-		})
+		Updates(updates)
 }
 
 // recordStatusHistory は container_status_histories に INSERT し、古いレコードを削除します。
