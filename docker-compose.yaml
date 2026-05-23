@@ -27,8 +27,7 @@ services:
       timeout: 10s
       retries: 5
     networks:
-      - default
-      - temporal-network
+      - host_network
 
   # ─── Redis ─────────────────────────────────────────────────────────────────
   redis:
@@ -37,20 +36,16 @@ services:
     ports:
       - "6379:6379"
     networks:
-      - default
+      - host_network
 
 volumes:
   dbdata:
     driver: local
 
 networks:
-  default:
-    driver: bridge
   host_network:
     driver: bridge
     ipam:
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
-  temporal-network:
-    driver: bridge

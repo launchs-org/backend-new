@@ -22,7 +22,6 @@ services:
       - app
       - auth
     networks:
-      - default
       - host_network
 
   # ─── Frontend（React 開発サーバー）────────────────────────────────────────
@@ -38,7 +37,6 @@ services:
     tty: true
     restart: always
     networks:
-      - default
       - host_network
 
   # ─── Backend API ──────────────────────────────────────────────────────────
@@ -69,9 +67,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - default
       - host_network
-      - temporal-network
 
   # ─── Controller（Temporal ワーカー / K8s リソース管理）───────────────────
   controller:
@@ -96,9 +92,7 @@ services:
       app:
         condition: service_started
     networks:
-      - default
       - host_network
-      - temporal-network
 
   # ─── Builder（Temporal ワーカー / railpack ビルド）───────────────────────
   builder:
@@ -131,9 +125,7 @@ services:
       app:
         condition: service_started
     networks:
-      - default
       - host_network
-      - temporal-network
 
   # ─── Watcher（Pod ステータス・ログ・メトリクス収集）──────────────────────
   watcher:
@@ -165,9 +157,7 @@ services:
       builder:
         condition: service_started
     networks:
-      - default
       - host_network
-      - temporal-network
 
   # ─── Auth（authbase 認証サービス）────────────────────────────────────────
   auth:
@@ -183,7 +173,6 @@ services:
       migrate:
         condition: service_completed_successfully
     networks:
-      - default
       - host_network
 
   # ─── Auth マイグレーション（一回限り実行）────────────────────────────────
@@ -196,5 +185,4 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - default
       - host_network
