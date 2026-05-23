@@ -1,208 +1,14 @@
 name: launchs-org
 
+# ─────────────────────────────────────────────────────────────────────────────
+# メイン compose ファイル。インフラ（DB・Redis）と共通ネットワークを定義する。
+# アプリ層は compose.app.yaml、Temporal 層は compose.temporal.yaml に分割。
+#
+# 起動: docker compose -f docker-compose.yaml -f compose.app.yaml -f compose.temporal.yaml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  nginx:
-    hostname: nginx
-    image: nginx:latest
-    ports:
-        - 8950:8443
-    restart: always
-    tty: true
-    volumes:
-      - ./nginx/configs:/etc/nginx/conf.d/
-      - ./nginx/keys:/etc/nginx/keys
-      - ./nginx/statics:/etc/nginx/static/statics
-    depends_on:
-      - app
-      - auth
-
-  frontend:
-    hostname: frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: development-dependencies-env
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    tty: true
-    restart: always
-
-  app:
-    hostname: app
-    build:
-      context: .
-      dockerfile: ./backend/dockerfile
-      target: develop
-    volumes:
-      - ./backend/src:/app
-      - ./backend/received:/received
-      - ./shared:/shared
-    ports:
-      - 8090:8090
-    env_file:
-      - ./config/app.env
-      - ./openssl/jwtKeys/public.env
-    tty: true
-    restart: always
-    networks:
-      - default
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "exec go tool air -c ./.air.toml"
-    depends_on:
-      migrate-app:
-        condition: service_completed_successfully
-      redis:
-        condition: service_started
-
-  controller:
-    hostname: controller
-    build:
-      context: .
-      dockerfile: ./controller/dockerfile
-      target: develop
-    volumes:
-      - ./controller/src:/app
-      - ./shared:/shared
-      - ~/.kube/config:/root/.kube/config
-    env_file:
-      - ./config/controller.env
-    tty: true
-    restart: always
-    networks:
-      - default
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "exec go tool air -c ./.air.toml"
-    depends_on:
-      app:
-        condition: service_started
-
-  builder:
-    hostname: builder
-    build:
-      context: .
-      dockerfile: ./builder/dockerfile
-      target: develop
-    volumes:
-      - ./builder/src:/app
-      - ./builder/received:/received
-      - ./shared:/shared
-      - ~/.kube/config:/root/.kube/config
-    ports:
-      - 8091:8091
-    env_file:
-      - ./config/builder.env
-      - ./openssl/jwtKeys/public.env
-    tty: true
-    restart: always
-    cap_add:
-      - NET_ADMIN
-    networks:
-      - default
-      - host_network
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "ip route add 172.33.0.0/16 via 172.20.0.1 && exec go tool air -c ./.air.toml"
-    extra_hosts:
-      - "harbor.main-harbor:172.33.0.1"
-    depends_on:
-      app:
-        condition: service_started
-
-  watcher:
-    hostname: watcher
-    build:
-      context: .
-      dockerfile: ./watcher/dockerfile
-      target: develop
-    volumes:
-      - ./watcher/src:/app
-      - ./shared:/shared
-      - ~/.kube/config:/root/.kube/config
-    env_file:
-      - ./config/watcher.env
-      - ./openssl/jwtKeys/public.env
-    tty: true
-    restart: always
-    cap_add:
-      - NET_ADMIN
-    networks:
-      - default
-      - host_network
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "ip route add 172.33.0.0/16 via 172.20.0.1 && exec go tool air -c ./.air.toml"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-      builder:
-        condition: service_started
-
-  auth:
-    hostname: auth
-    image: ghcr.io/mattuu0/authbase/auth:latest
-    env_file:
-      - ./config/auth.env
-      - ./openssl/jwtKeys/private.env
-    restart: always
-    volumes:
-      - ./auth/icons:/assets/icons
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-
-  migrate:
-    image: ghcr.io/mattuu0/authbase/auth:latest
-    env_file:
-        - ./config/auth.env
-    command: ["/auth","migrate","-r"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  migrate-app:
-    hostname: migrate-app
-    build:
-      context: .
-      dockerfile: ./backend/dockerfile
-      target: develop
-    volumes:
-      - ./backend/src:/app
-      - ./backend/received:/received
-      - ./shared:/shared
-    env_file:
-      - ./config/app.env
-    networks:
-      - default
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "cd /app && go run . migrate"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-
-  riverui:
-    image: ghcr.io/riverqueue/riverui:latest
-    ports:
-      - 8080:8080
-    environment:
-      DATABASE_URL: "postgres://task_user:task_pass@db:5432/taskdb?sslmode=disable"
-    depends_on:
-      migrate-app:
-        condition: service_completed_successfully
-    restart: always
-
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
     hostname: db
     image: postgres:16-alpine
@@ -214,25 +20,28 @@ services:
       - dbdata:/var/lib/postgresql/data
       - ./database/script/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - 5432:5432
+      - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 10s
       retries: 5
+    networks:
+      - default
+      - temporal-network
 
+  # ─── Redis ─────────────────────────────────────────────────────────────────
   redis:
     image: redis:alpine
     restart: always
     ports:
-      - 6379:6379
+      - "6379:6379"
     networks:
       - default
 
 volumes:
   dbdata:
     driver: local
-
 
 networks:
   default:
@@ -243,3 +52,5 @@ networks:
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
+  temporal-network:
+    driver: bridge

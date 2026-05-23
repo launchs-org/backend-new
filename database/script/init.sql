@@ -1,24 +1,33 @@
 -- PostgreSQL初期化スクリプト
--- このスクリプトは postgres ユーザー（スーパーユーザー）で実行されます。
+-- postgres ユーザー（スーパーユーザー）で実行されます。
 
--- データベースの作成
+-- ─────────────────────────────────────────
+-- データベース作成
+-- ─────────────────────────────────────────
 CREATE DATABASE authdb;
 CREATE DATABASE maindb;
-CREATE DATABASE taskdb;
 
--- メインユーザーの作成
+-- Temporal 用データベース（temporal-admin-tools が自動スキーマ作成するため空で作成）
+CREATE DATABASE temporal;
+CREATE DATABASE temporal_visibility;
+
+-- ─────────────────────────────────────────
+-- ユーザー作成
+-- ─────────────────────────────────────────
+
+-- アプリケーション用メインユーザー
 CREATE USER main WITH PASSWORD 'main';
 GRANT ALL PRIVILEGES ON DATABASE authdb TO main;
 GRANT ALL PRIVILEGES ON DATABASE maindb TO main;
 
--- taskdb 専用ユーザーの作成
-CREATE USER task_user WITH PASSWORD 'task_pass';
-GRANT ALL PRIVILEGES ON DATABASE taskdb TO task_user;
+-- Temporal 専用ユーザー
+CREATE USER temporal WITH PASSWORD 'temporal';
+GRANT ALL PRIVILEGES ON DATABASE temporal TO temporal;
+GRANT ALL PRIVILEGES ON DATABASE temporal_visibility TO temporal;
 
--- 各データベースに対して権限を付与するための設定（PostgreSQLでは接続後にGRANTが必要な場合があるため）
--- 以下の操作は各データベースに接続して実行する必要がありますが、
--- docker-point-initdb.d では単一のスクリプトとして実行されるため、
--- 必要に応じて接続切り替えを行います。
+-- ─────────────────────────────────────────
+-- スキーマ権限付与（各DBに接続して実行）
+-- ─────────────────────────────────────────
 
 \c authdb
 GRANT ALL ON SCHEMA public TO main;
@@ -26,7 +35,12 @@ GRANT ALL ON SCHEMA public TO main;
 \c maindb
 GRANT ALL ON SCHEMA public TO main;
 
-\c taskdb
-GRANT ALL ON SCHEMA public TO task_user;
+\c temporal
+GRANT ALL ON SCHEMA public TO temporal;
+-- temporal-admin-tools がスキーマを作成できるよう CREATEDB 権限を付与
+ALTER USER temporal WITH CREATEDB;
+
+\c temporal_visibility
+GRANT ALL ON SCHEMA public TO temporal;
 
 \c maindb

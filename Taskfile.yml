@@ -1,90 +1,123 @@
 # https://taskfile.dev
-
 version: '3'
 
+# ─────────────────────────────────────────────────────────────────────────────
+# compose ファイル構成:
+#   docker-compose.yaml   … インフラ（PostgreSQL・Redis・共通ネットワーク）
+#   compose.app.yaml      … アプリ（nginx/frontend/app/controller/builder/watcher/auth）
+#   compose.temporal.yaml … Temporal（サーバー・UI・スキーマセットアップ）
+# ─────────────────────────────────────────────────────────────────────────────
+
 vars:
-  GREETING: Hello, World!
+  # 全ファイルを結合するフラグ
+  COMPOSE_ALL: "-f docker-compose.yaml -f compose.app.yaml -f compose.temporal.yaml"
+  # インフラのみ
+  COMPOSE_INFRA: "-f docker-compose.yaml"
+  # インフラ + アプリ（Temporal なし）
+  COMPOSE_APP: "-f docker-compose.yaml -f compose.app.yaml"
+  # インフラ + Temporal のみ
+  COMPOSE_TEMPORAL: "-f docker-compose.yaml -f compose.temporal.yaml"
 
 tasks:
-  # コンテナ落として全て削除
-  clean:
-    cmds:
-      - docker compose down --remove-orphans --rmi all --volumes
-    silent: true
-  
-  # コンテナ落とす
-  down:
-    cmds:
-      - docker compose down
-    silent: true
-  
-  # コンテナ起動
-  up:
-    cmds:
-      - docker compose up -d --build
-    silent: true
-
-  # auth にアタッチ
-  atauth:
-    cmds:
-      - docker compose logs auth
-      - docker compose attach auth
-
-  # データベース接続
-  dbshell:
-    cmds:
-      - docker compose exec {{.DBContainer}} psql -U {{.User}} -d {{.Database}}
-    env:
-      PGPASSWORD: root
-    vars:
-      Database: maindb
-      User: main
-      DBContainer: postgres
-    silent: true
-  
-  # データベースのリセット
-  dbreset:
-    cmds:
-      - docker compose down postgres --volumes --remove-orphans
-      - docker compose up postgres -d --build
-    silent: true
-  
-  # 初回セットアップ
+  # ─── セットアップ ───────────────────────────────────────────────────────
   setup:
+    desc: "初回セットアップ（設定生成・JWT鍵生成・全サービス起動）"
     cmds:
-      - echo "セットアップを開始します"
-      - echo "設定用のコンテナを生成しています"
+      - echo "設定ファイルを生成しています..."
       - task: config
-      - echo "JWT鍵を生成しています"
+      - echo "JWT 鍵を生成しています..."
       - task: genkey
-      - echo "コンテナを起動しています"
+      - echo "全サービスを起動しています..."
       - task: up
     silent: true
-      # - task: dbreset
-      # - task: dashb
-  # dashb:
-  #   cmds:
-  #     - docker compose exec dashboard npm i --verbose --force
-  #     - docker compose exec dashboard npm run build
-  #     - docker compose logs -f auth
 
+  # ─── 起動 ───────────────────────────────────────────────────────────────
+  up:
+    desc: "全サービスを起動（インフラ + アプリ + Temporal）"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} up -d --build
+    silent: true
+
+  up-app:
+    desc: "インフラ + アプリのみ起動（Temporal なし）"
+    cmds:
+      - docker compose {{.COMPOSE_APP}} up -d --build
+    silent: true
+
+  up-infra:
+    desc: "インフラのみ起動（PostgreSQL・Redis）"
+    cmds:
+      - docker compose {{.COMPOSE_INFRA}} up -d --build
+    silent: true
+
+  up-temporal:
+    desc: "インフラ + Temporal のみ起動"
+    cmds:
+      - docker compose {{.COMPOSE_TEMPORAL}} up -d --build
+    silent: true
+
+  # ─── 停止 ───────────────────────────────────────────────────────────────
+  down:
+    desc: "全サービスを停止"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} down
+    silent: true
+
+  down-app:
+    desc: "アプリのみ停止"
+    cmds:
+      - docker compose {{.COMPOSE_APP}} down
+    silent: true
+
+  # ─── 削除 ───────────────────────────────────────────────────────────────
+  clean:
+    desc: "全サービスを停止してイメージ・ボリュームをすべて削除"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} down --remove-orphans --rmi all --volumes
+    silent: true
+
+  # ─── ログ ───────────────────────────────────────────────────────────────
+  logs:
+    desc: "全サービスのログをフォロー（引数でサービス指定可: task logs -- app）"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} logs -f {{.CLI_ARGS}}
+    silent: true
+
+  # ─── データベース ────────────────────────────────────────────────────────
+  dbshell:
+    desc: "maindb に psql で接続"
+    cmds:
+      - docker compose {{.COMPOSE_INFRA}} exec postgres psql -U main -d maindb
+    env:
+      PGPASSWORD: main
+    silent: true
+
+  dbreset:
+    desc: "PostgreSQL ボリュームを削除して再作成（データ全消去）"
+    cmds:
+      - docker compose {{.COMPOSE_INFRA}} down postgres --volumes --remove-orphans
+      - docker compose {{.COMPOSE_INFRA}} up postgres -d
+    silent: true
+
+  # ─── ユーティリティ ──────────────────────────────────────────────────────
   genkey:
+    desc: "JWT Ed25519 キーと Nginx TLS キーを生成"
     cmds:
       - cmd: docker run --rm -it -v .\\openssl\\jwtKeys:/jwtkeys -v .\\nginx\\keys:/sslkeys {{.Build_Image}}
         platforms: [windows]
       - cmd: docker run --rm -it -v ./openssl/jwtKeys:/jwtkeys -v ./nginx/keys:/sslkeys {{.Build_Image}}
-        platforms: [linux,darwin]
+        platforms: [linux, darwin]
     vars:
       Build_Image:
         sh: docker build -q ./openssl
-  
+
   config:
+    desc: "サービス別 .env 設定ファイルを生成"
     cmds:
       - cmd: docker run --rm -it -v .\\config:/config/data {{.Build_Image}}
         platforms: [windows]
       - cmd: docker run --rm -it -v ./config:/config/data {{.Build_Image}}
-        platforms: [linux,darwin]
-      - echo "設定用のイメージを削除しています"
+        platforms: [linux, darwin]
       - docker rmi -f {{.Build_Image}}
     vars:
       Build_Image:

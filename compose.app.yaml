@@ -1,0 +1,192 @@
+name: launchs-org
+
+# ─────────────────────────────────────────────────────────────────────────────
+# アプリケーション層（nginx / frontend / app / controller / builder / watcher / auth）
+# docker-compose.yaml と一緒に使用する。
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ─── Nginx（リバースプロキシ）────────────────────────────────────────────
+  nginx:
+    hostname: nginx
+    image: nginx:latest
+    ports:
+      - "8950:8443"
+    restart: always
+    tty: true
+    volumes:
+      - ./nginx/configs:/etc/nginx/conf.d/
+      - ./nginx/keys:/etc/nginx/keys
+      - ./nginx/statics:/etc/nginx/static/statics
+    depends_on:
+      - app
+      - auth
+    networks:
+      - default
+
+  # ─── Frontend（React 開発サーバー）────────────────────────────────────────
+  frontend:
+    hostname: frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development-dependencies-env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    tty: true
+    restart: always
+    networks:
+      - default
+
+  # ─── Backend API ──────────────────────────────────────────────────────────
+  app:
+    hostname: app
+    build:
+      context: .
+      dockerfile: ./backend/dockerfile
+      target: develop
+    volumes:
+      - ./backend/src:/app
+      - ./backend/received:/received
+      - ./shared:/shared
+    ports:
+      - "8090:8090"
+    env_file:
+      - ./config/app.env
+      - ./openssl/jwtKeys/public.env
+    tty: true
+    restart: always
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "exec go tool air -c ./.air.toml"
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+
+  # ─── Controller（Temporal ワーカー / K8s リソース管理）───────────────────
+  controller:
+    hostname: controller
+    build:
+      context: .
+      dockerfile: ./controller/dockerfile
+      target: develop
+    volumes:
+      - ./controller/src:/app
+      - ./shared:/shared
+      - ~/.kube/config:/root/.kube/config
+    env_file:
+      - ./config/controller.env
+    tty: true
+    restart: always
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "exec go tool air -c ./.air.toml"
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - default
+      - temporal-network
+
+  # ─── Builder（Temporal ワーカー / railpack ビルド）───────────────────────
+  builder:
+    hostname: builder
+    build:
+      context: .
+      dockerfile: ./builder/dockerfile
+      target: develop
+    volumes:
+      - ./builder/src:/app
+      - ./builder/received:/received
+      - ./shared:/shared
+      - ~/.kube/config:/root/.kube/config
+    ports:
+      - "8091:8091"
+    env_file:
+      - ./config/builder.env
+      - ./openssl/jwtKeys/public.env
+    tty: true
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "ip route add 172.33.0.0/16 via 172.20.0.1 && exec go tool air -c ./.air.toml"
+    extra_hosts:
+      - "harbor.main-harbor:172.33.0.1"
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - default
+      - host_network
+      - temporal-network
+
+  # ─── Watcher（Pod ステータス・ログ・メトリクス収集）──────────────────────
+  watcher:
+    hostname: watcher
+    build:
+      context: .
+      dockerfile: ./watcher/dockerfile
+      target: develop
+    volumes:
+      - ./watcher/src:/app
+      - ./shared:/shared
+      - ~/.kube/config:/root/.kube/config
+    env_file:
+      - ./config/watcher.env
+      - ./openssl/jwtKeys/public.env
+    tty: true
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "ip route add 172.33.0.0/16 via 172.20.0.1 && exec go tool air -c ./.air.toml"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      builder:
+        condition: service_started
+    networks:
+      - default
+      - host_network
+
+  # ─── Auth（authbase 認証サービス）────────────────────────────────────────
+  auth:
+    hostname: auth
+    image: ghcr.io/mattuu0/authbase/auth:latest
+    env_file:
+      - ./config/auth.env
+      - ./openssl/jwtKeys/private.env
+    restart: always
+    volumes:
+      - ./auth/icons:/assets/icons
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - default
+
+  # ─── Auth マイグレーション（一回限り実行）────────────────────────────────
+  migrate:
+    image: ghcr.io/mattuu0/authbase/auth:latest
+    env_file:
+      - ./config/auth.env
+    command: ["/auth", "migrate", "-r"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
