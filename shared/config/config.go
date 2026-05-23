@@ -44,6 +44,26 @@ func DatabaseURL() string {
 	return getEnv("DATABASE_URL", "")
 }
 
+// HarborEndpoint は Harbor のエンドポイント URL を返します。
+func HarborEndpoint() string {
+	return getEnv("HARBOR_ENDPOINT", "https://harbor.launchs.org")
+}
+
+// HarborAdminUser は Harbor 管理者ユーザー名を返します。
+func HarborAdminUser() string {
+	return getEnv("HARBOR_ADMIN_USER", "admin")
+}
+
+// HarborAdminPassword は Harbor 管理者パスワードを返します。
+func HarborAdminPassword() string {
+	return getEnv("HARBOR_ADMIN_PASSWORD", "")
+}
+
+// HarborRegistry は Harbor レジストリのホスト名を返します（イメージ参照に使用）。
+func HarborRegistry() string {
+	return getEnv("HARBOR_REGISTRY", "harbor.launchs.org")
+}
+
 // TemporalAddress は Temporal サーバーアドレスを返します。
 func TemporalAddress() string {
 	return getEnv("TEMPORAL_ADDRESS", "temporal:7233")
