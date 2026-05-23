@@ -1,0 +1,1919 @@
+openapi: 3.0.3
+info:
+  title: Launchs-org API
+  version: 1.0.0
+  description: Launchs-org PaaS API
+
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: NOT_FOUND
+        message:
+          type: string
+          example: container not found
+
+    Response:
+      type: object
+      properties:
+        data:
+          nullable: true
+        error:
+          nullable: true
+          $ref: '#/components/schemas/Error'
+
+    # ── Project ──────────────────────────────────────────────
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        namespace:
+          type: string
+        container_count:
+          type: integer
+        last_deployed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            containers:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContainerSummary'
+            volumes:
+              type: array
+              items:
+                $ref: '#/components/schemas/Volume'
+            env_vars:
+              type: array
+              items:
+                $ref: '#/components/schemas/EnvVar'
+
+    # ── Container ────────────────────────────────────────────
+
+    PodStatus:
+      type: object
+      properties:
+        pod_name:
+          type: string
+        status:
+          type: string
+          enum: [Running, Pending, Failed, Succeeded, Unknown]
+        ready:
+          type: boolean
+        restart_count:
+          type: integer
+        node_name:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ContainerSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, building, deploying, running, scaling, failed, stopped]
+        replicas:
+          type: integer
+        ready_replicas:
+          type: integer
+        failed_replicas:
+          type: integer
+        resource_size:
+          type: string
+          enum: [small, medium, large]
+        active_deploy_workflow_id:
+          type: string
+          nullable: true
+        active_scale_workflow_id:
+          type: string
+          nullable: true
+        pods:
+          type: array
+          items:
+            $ref: '#/components/schemas/PodStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ContainerDetail:
+      allOf:
+        - $ref: '#/components/schemas/ContainerSummary'
+        - type: object
+          properties:
+            git_repo:
+              type: string
+              nullable: true
+            git_branch:
+              type: string
+              nullable: true
+            git_subdir:
+              type: string
+              nullable: true
+            env_vars:
+              type: array
+              items:
+                $ref: '#/components/schemas/EnvVar'
+            ports:
+              type: array
+              items:
+                $ref: '#/components/schemas/Port'
+            routes:
+              type: array
+              items:
+                $ref: '#/components/schemas/NetworkRoute'
+            mounts:
+              type: array
+              items:
+                $ref: '#/components/schemas/VolumeMount'
+
+    # ── EnvVar ───────────────────────────────────────────────
+
+    EnvVar:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        value:
+          type: string
+
+    EnvVarInput:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    # ── Port ─────────────────────────────────────────────────
+
+    Port:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        port:
+          type: integer
+        protocol:
+          type: string
+          enum: [TCP, UDP]
+
+    # ── NetworkRoute ─────────────────────────────────────────
+
+    NetworkRoute:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [service, ingress]
+        port:
+          type: integer
+        protocol:
+          type: string
+          nullable: true
+        subdomain:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Volume ───────────────────────────────────────────────
+
+    Volume:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        size_mb:
+          type: integer
+        storage_class:
+          type: string
+        status:
+          type: string
+          enum: [pending, bound, lost]
+        mounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+        created_at:
+          type: string
+          format: date-time
+
+    VolumeMount:
+      type: object
+      properties:
+        container_id:
+          type: string
+          format: uuid
+        container_name:
+          type: string
+        mount_path:
+          type: string
+
+    # ── Log ──────────────────────────────────────────────────
+
+    LogLine:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [DEBUG, INFO, WARN, ERROR]
+        message:
+          type: string
+        pod_name:
+          type: string
+          nullable: true
+
+    LogResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogLine'
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ── Metric ───────────────────────────────────────────────
+
+    MetricPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          type: number
+
+    MetricsResponse:
+      type: object
+      properties:
+        cpu:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricPoint'
+        memory:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricPoint'
+
+    # ── BuildJob ─────────────────────────────────────────────
+
+    BuildJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        git_repo:
+          type: string
+        git_branch:
+          type: string
+        git_commit:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, complete, failed]
+        temporal_workflow_id:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        image_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    # ── Template ─────────────────────────────────────────────
+
+    TemplateSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+
+    TemplateEnvVarDef:
+      type: object
+      properties:
+        key:
+          type: string
+        required:
+          type: boolean
+        description:
+          type: string
+        auto_generate:
+          type: boolean
+        generate_type:
+          type: string
+          nullable: true
+        default:
+          type: string
+
+    TemplateDetail:
+      allOf:
+        - $ref: '#/components/schemas/TemplateSummary'
+        - type: object
+          properties:
+            env_vars:
+              type: array
+              items:
+                $ref: '#/components/schemas/TemplateEnvVarDef'
+            volume:
+              type: object
+              nullable: true
+              properties:
+                required:
+                  type: boolean
+                mount_path:
+                  type: string
+                default_size_mb:
+                  type: integer
+
+    # ── Snapshot ─────────────────────────────────────────────
+
+    SnapshotSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        container_count:
+          type: integer
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── ServiceConnection ────────────────────────────────────
+
+    ServiceConnection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_container_id:
+          type: string
+          format: uuid
+        source_container_name:
+          type: string
+        target_container_id:
+          type: string
+          format: uuid
+        target_container_name:
+          type: string
+
+    # ── WorkflowResult ───────────────────────────────────────
+
+    WorkflowResult:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+
+    ProjectJob:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+        workflow_type:
+          type: string
+        container_id:
+          type: string
+          format: uuid
+          nullable: true
+        container_name:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [running, completed, failed, canceled]
+        started_at:
+          type: string
+          format: date-time
+
+paths:
+
+  # ════════════════════════════════════════════════════════════
+  # Projects
+  # ════════════════════════════════════════════════════════════
+
+  /projects:
+    get:
+      summary: プロジェクト一覧取得
+      tags: [Projects]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  error:
+                    nullable: true
+
+    post:
+      summary: プロジェクト作成
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Project'
+                      - type: object
+                        properties:
+                          workflow_id:
+                            type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: プロジェクト取得
+      tags: [Projects]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ProjectDetail'
+                  error:
+                    nullable: true
+
+    delete:
+      summary: プロジェクト削除
+      tags: [Projects]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/deploy:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: プロジェクト一括デプロイ
+      tags: [Projects]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      snapshot_id:
+                        type: string
+                        format: uuid
+                      workflow_ids:
+                        type: array
+                        items:
+                          type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/jobs:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: プロジェクトジョブ進捗一覧
+      tags: [Projects]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectJob'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Project Env Vars
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/env-vars:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: プロジェクト環境変数一覧取得
+      tags: [EnvVars]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnvVar'
+                  error:
+                    nullable: true
+
+    put:
+      summary: プロジェクト環境変数一括作成・更新
+      tags: [EnvVars]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [env_vars]
+              properties:
+                env_vars:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EnvVarInput'
+      responses:
+        '200':
+          description: OK
+
+    delete:
+      summary: プロジェクト環境変数削除
+      tags: [EnvVars]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+      responses:
+        '200':
+          description: OK
+
+  # ════════════════════════════════════════════════════════════
+  # Containers
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: コンテナ一覧取得（Pod ステータス含む）
+      tags: [Containers]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContainerSummary'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/deploy:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: GitHub からコンテナ作成・デプロイ
+      tags: [Containers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, git_repo, git_branch, git_commit]
+              properties:
+                name:
+                  type: string
+                git_repo:
+                  type: string
+                git_branch:
+                  type: string
+                git_commit:
+                  type: string
+                subdir:
+                  type: string
+                  default: "."
+                resource_size:
+                  type: string
+                  enum: [small, medium, large]
+                  default: small
+                replicas:
+                  type: integer
+                  default: 1
+                env_vars:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EnvVarInput'
+                ports:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      port:
+                        type: integer
+                      protocol:
+                        type: string
+                        enum: [TCP, UDP]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      container_id:
+                        type: string
+                        format: uuid
+                      workflow_id:
+                        type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/from-template:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: テンプレートからコンテナ作成
+      tags: [Containers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, template_name]
+              properties:
+                name:
+                  type: string
+                template_name:
+                  type: string
+                resource_size:
+                  type: string
+                  enum: [small, medium, large]
+                  default: small
+                params:
+                  type: object
+                  additionalProperties:
+                    type: string
+                volume_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                mount_path:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      container_id:
+                        type: string
+                        format: uuid
+                      workflow_id:
+                        type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: コンテナ取得
+      tags: [Containers]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ContainerDetail'
+                  error:
+                    nullable: true
+
+    put:
+      summary: コンテナ設定更新
+      tags: [Containers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource_size:
+                  type: string
+                  enum: [small, medium, large]
+      responses:
+        '200':
+          description: OK
+
+    delete:
+      summary: コンテナ削除
+      tags: [Containers]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/redeploy:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: コンテナ再デプロイ
+      tags: [Containers]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/scale:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: コンテナスケール（0 で停止）
+      tags: [Containers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [replicas]
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/webhook:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Webhook 作成
+      tags: [Containers]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      webhook_url:
+                        type: string
+                      token:
+                        type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/status-histories:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: コンテナステータス履歴取得
+      tags: [Containers]
+      responses:
+        '200':
+          description: OK
+
+  # ════════════════════════════════════════════════════════════
+  # Container Env Vars
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/env-vars:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: コンテナ環境変数一覧取得
+      tags: [EnvVars]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnvVar'
+                  error:
+                    nullable: true
+
+    put:
+      summary: コンテナ環境変数一括作成・更新
+      tags: [EnvVars]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [env_vars]
+              properties:
+                env_vars:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EnvVarInput'
+      responses:
+        '200':
+          description: OK
+
+    delete:
+      summary: コンテナ環境変数削除
+      tags: [EnvVars]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+      responses:
+        '200':
+          description: OK
+
+  # ════════════════════════════════════════════════════════════
+  # Ports
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/ports:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: ポート一覧取得
+      tags: [Ports]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Port'
+                  error:
+                    nullable: true
+
+    post:
+      summary: ポート追加
+      tags: [Ports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [port, protocol]
+              properties:
+                port:
+                  type: integer
+                protocol:
+                  type: string
+                  enum: [TCP, UDP]
+      responses:
+        '201':
+          description: Created
+
+  /projects/{project_id}/containers/{container_id}/ports/{port_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: port_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: ポート削除
+      tags: [Ports]
+      responses:
+        '200':
+          description: OK
+
+  # ════════════════════════════════════════════════════════════
+  # Network Routes
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/routes:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: ネットワークルート一覧取得
+      tags: [Routes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NetworkRoute'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/routes/service:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Kubernetes Service 作成
+      tags: [Routes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [port, protocol]
+              properties:
+                port:
+                  type: integer
+                protocol:
+                  type: string
+                  enum: [TCP, UDP]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/routes/ingress:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: IngressRoute 作成
+      tags: [Routes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [port]
+              properties:
+                port:
+                  type: integer
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      subdomain:
+                        type: string
+                      workflow_id:
+                        type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/routes/{route_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: ルート削除
+      tags: [Routes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Mounts
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/mounts:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: ボリュームマウント
+      tags: [Volumes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [volume_id, mount_path]
+              properties:
+                volume_id:
+                  type: string
+                  format: uuid
+                mount_path:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/containers/{container_id}/mounts/{volume_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: volume_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: ボリュームアンマウント
+      tags: [Volumes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Logs
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/logs:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          format: date-time
+        description: このタイムスタンプ以降のログを取得
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+      - name: pod_name
+        in: query
+        schema:
+          type: string
+        description: Pod を指定してフィルタリング
+    get:
+      summary: コンテナランタイムログ取得
+      tags: [Logs]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LogResponse'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/build-jobs/{build_job_id}/logs:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: build_job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+    get:
+      summary: ビルドジョブログ取得
+      tags: [Logs]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LogResponse'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Metrics
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/metrics:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: pod_name
+        in: query
+        schema:
+          type: string
+        description: Pod を指定してフィルタリング
+    get:
+      summary: コンテナメトリクス取得
+      tags: [Metrics]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MetricsResponse'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Build Jobs
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/containers/{container_id}/build-jobs:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: container_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: ビルドジョブ一覧取得
+      tags: [BuildJobs]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BuildJob'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/build-jobs/{build_job_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: build_job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: ビルドジョブ停止
+      tags: [BuildJobs]
+      responses:
+        '200':
+          description: OK
+
+  # ════════════════════════════════════════════════════════════
+  # Volumes
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/volumes:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: ボリューム一覧取得
+      tags: [Volumes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Volume'
+                  error:
+                    nullable: true
+
+    post:
+      summary: ボリューム作成
+      tags: [Volumes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, size_mb]
+              properties:
+                name:
+                  type: string
+                size_mb:
+                  type: integer
+                storage_class:
+                  type: string
+                  default: standard
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      volume_id:
+                        type: string
+                        format: uuid
+                      workflow_id:
+                        type: string
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/volumes/{volume_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: volume_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: ボリューム削除
+      tags: [Volumes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Templates
+  # ════════════════════════════════════════════════════════════
+
+  /templates:
+    get:
+      summary: テンプレート一覧取得
+      tags: [Templates]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplateSummary'
+                  error:
+                    nullable: true
+
+  /templates/{template_name}:
+    parameters:
+      - name: template_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: テンプレート詳細取得
+      tags: [Templates]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TemplateDetail'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Snapshots
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/snapshots:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: スナップショット一覧取得
+      tags: [Snapshots]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SnapshotSummary'
+                  error:
+                    nullable: true
+
+  /projects/{project_id}/snapshots/{snapshot_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: snapshot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: スナップショット詳細取得
+      tags: [Snapshots]
+      responses:
+        '200':
+          description: OK
+
+  /projects/{project_id}/snapshots/{snapshot_id}/restore:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: snapshot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: スナップショットから復元
+      tags: [Snapshots]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowResult'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Service Connections
+  # ════════════════════════════════════════════════════════════
+
+  /projects/{project_id}/connections:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: コンテナ間接続一覧取得（フロー可視化用）
+      tags: [Connections]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceConnection'
+                  error:
+                    nullable: true
+
+  # ════════════════════════════════════════════════════════════
+  # Webhook（認証不要）
+  # ════════════════════════════════════════════════════════════
+
+  /webhooks/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: GitHub Webhook 受信
+      tags: [Webhooks]
+      security: []
+      responses:
+        '200':
+          description: OK
