@@ -15,8 +15,8 @@ import (
 // PVCActivity は PersistentVolumeClaim の作成・削除を担当します。
 type PVCActivity struct{}
 
-// Create は PVC を作成します。既に存在する場合は何もしません（冪等）。
-func (a *PVCActivity) Create(ctx context.Context, spec PVCSpec) error {
+// PVCCreate は PVC を作成します。既に存在する場合は何もしません（冪等）。
+func (a *PVCActivity) PVCCreate(ctx context.Context, spec PVCSpec) error {
 	k8s := database.K8sClientset
 
 	storageSize := spec.StorageSize
@@ -49,8 +49,8 @@ func (a *PVCActivity) Create(ctx context.Context, spec PVCSpec) error {
 	return nil
 }
 
-// Delete は PVC を削除します。
-func (a *PVCActivity) Delete(ctx context.Context, namespace, name string) error {
+// PVCDelete は PVC を削除します。
+func (a *PVCActivity) PVCDelete(ctx context.Context, namespace, name string) error {
 	k8s := database.K8sClientset
 	err := k8s.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {

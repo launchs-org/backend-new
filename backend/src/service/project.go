@@ -17,16 +17,18 @@ import (
 // ---- Temporal ワークフロー入力型 ----
 
 // CreateProjectInput は CreateProjectWorkflow の入力です。
+// controller/workflow の CreateProjectInput と JSON フィールド名を一致させます（タグなし）。
 type CreateProjectInput struct {
-	ProjectID string `json:"project_id"`
-	Namespace string `json:"namespace"`
+	ProjectID string
+	Namespace string
 }
 
 // DeleteProjectInput は DeleteProjectWorkflow の入力です。
+// controller/workflow の DeleteProjectInput と JSON フィールド名を一致させます（タグなし）。
 type DeleteProjectInput struct {
-	ProjectID         string `json:"project_id"`
-	Namespace         string `json:"namespace"`
-	HarborProjectName string `json:"harbor_project_name"`
+	ProjectID         string
+	Namespace         string
+	HarborProjectName string
 }
 
 // DeployProjectInput は DeployProjectWorkflow の入力です。

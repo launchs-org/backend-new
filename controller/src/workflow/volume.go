@@ -27,7 +27,7 @@ func CreateVolumeWorkflow(ctx workflow.Context, input CreateVolumeInput) error {
 		StorageSize: input.StorageSize,
 	}
 
-	return workflow.ExecuteActivity(ctx, pvcAct.Create, spec).Get(ctx, nil)
+	return workflow.ExecuteActivity(ctx, pvcAct.PVCCreate, spec).Get(ctx, nil)
 }
 
 // DeleteVolumeWorkflow は PVC を削除します。
@@ -42,7 +42,7 @@ func DeleteVolumeWorkflow(ctx workflow.Context, input DeleteVolumeInput) error {
 
 	pvcAct := &activity.PVCActivity{}
 
-	return workflow.ExecuteActivity(ctx, pvcAct.Delete, input.Namespace, input.PVCName).Get(ctx, nil)
+	return workflow.ExecuteActivity(ctx, pvcAct.PVCDelete, input.Namespace, input.PVCName).Get(ctx, nil)
 }
 
 // MountVolumeWorkflow はボリュームをマウントした状態で Deployment を再 Apply します。
@@ -58,16 +58,16 @@ func MountVolumeWorkflow(ctx workflow.Context, input MountVolumeInput) error {
 	deployAct := &activity.DeploymentActivity{}
 	dbAct := &activity.DBActivity{}
 
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
 		return err
 	}
 
-	if err := workflow.ExecuteActivity(ctx, deployAct.CreateOrUpdate, input.DeploySpec).Get(ctx, nil); err != nil {
-		_ = workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, input.DeploySpec).Get(ctx, nil); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}
 
-	return workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
 }
 
 // UnmountVolumeWorkflow はボリュームをアンマウントした状態で Deployment を再 Apply します。
@@ -83,14 +83,14 @@ func UnmountVolumeWorkflow(ctx workflow.Context, input UnmountVolumeInput) error
 	deployAct := &activity.DeploymentActivity{}
 	dbAct := &activity.DBActivity{}
 
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
 		return err
 	}
 
-	if err := workflow.ExecuteActivity(ctx, deployAct.CreateOrUpdate, input.DeploySpec).Get(ctx, nil); err != nil {
-		_ = workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, input.DeploySpec).Get(ctx, nil); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}
 
-	return workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
 }

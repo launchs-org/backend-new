@@ -9,14 +9,15 @@ import (
 )
 
 // CreateProjectInput は CreateProjectWorkflow への入力です。
+// ProjectID は文字列で受け取り、内部で uuid.Parse します。
 type CreateProjectInput struct {
-	ProjectID uuid.UUID
+	ProjectID string
 	Namespace string
 }
 
 // DeleteProjectInput は DeleteProjectWorkflow への入力です。
 type DeleteProjectInput struct {
-	ProjectID uuid.UUID
+	ProjectID string
 	Namespace string
 }
 

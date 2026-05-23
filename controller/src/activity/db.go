@@ -13,8 +13,8 @@ import (
 // DBActivity はコントローラーが行う DB 更新操作を担当します。
 type DBActivity struct{}
 
-// UpdateContainerStatus はコンテナのステータスを更新します。
-func (a *DBActivity) UpdateContainerStatus(ctx context.Context, containerID uuid.UUID, status string) error {
+// DBUpdateContainerStatus はコンテナのステータスを更新します。
+func (a *DBActivity) DBUpdateContainerStatus(ctx context.Context, containerID uuid.UUID, status string) error {
 	result := database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
 		Update("status", status)
@@ -24,8 +24,8 @@ func (a *DBActivity) UpdateContainerStatus(ctx context.Context, containerID uuid
 	return nil
 }
 
-// UpdateContainerImage はコンテナの現在イメージID を更新します。
-func (a *DBActivity) UpdateContainerImage(ctx context.Context, containerID, imageID uuid.UUID) error {
+// DBUpdateContainerImage はコンテナの現在イメージID を更新します。
+func (a *DBActivity) DBUpdateContainerImage(ctx context.Context, containerID, imageID uuid.UUID) error {
 	result := database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
 		Update("current_image_id", imageID)
@@ -35,8 +35,8 @@ func (a *DBActivity) UpdateContainerImage(ctx context.Context, containerID, imag
 	return nil
 }
 
-// UpdateContainerReplicas はコンテナのレプリカ数を更新します。
-func (a *DBActivity) UpdateContainerReplicas(ctx context.Context, containerID uuid.UUID, replicas int) error {
+// DBUpdateContainerReplicas はコンテナのレプリカ数を更新します。
+func (a *DBActivity) DBUpdateContainerReplicas(ctx context.Context, containerID uuid.UUID, replicas int) error {
 	result := database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
 		Update("replicas", replicas)
@@ -46,8 +46,8 @@ func (a *DBActivity) UpdateContainerReplicas(ctx context.Context, containerID uu
 	return nil
 }
 
-// UpdateProjectHarbor はプロジェクトの Harbor 認証情報を更新します。
-func (a *DBActivity) UpdateProjectHarbor(ctx context.Context, projectID uuid.UUID, projectName, username, password string) error {
+// DBUpdateProjectHarbor はプロジェクトの Harbor 認証情報を更新します。
+func (a *DBActivity) DBUpdateProjectHarbor(ctx context.Context, projectID uuid.UUID, projectName, username, password string) error {
 	updates := map[string]interface{}{
 		"harbor_project_name":   projectName,
 		"harbor_robot_username": username,
@@ -62,8 +62,8 @@ func (a *DBActivity) UpdateProjectHarbor(ctx context.Context, projectID uuid.UUI
 	return nil
 }
 
-// CreateDeploymentRecord は Deployment レコードを DB に作成します。
-func (a *DBActivity) CreateDeploymentRecord(ctx context.Context, containerID uuid.UUID, imageRef string, replicas int) error {
+// DBCreateDeploymentRecord は Deployment レコードを DB に作成します。
+func (a *DBActivity) DBCreateDeploymentRecord(ctx context.Context, containerID uuid.UUID, imageRef string, replicas int) error {
 	deployment := &model.Deployment{
 		ID:          uuid.New(),
 		ContainerID: containerID,
@@ -77,8 +77,8 @@ func (a *DBActivity) CreateDeploymentRecord(ctx context.Context, containerID uui
 	return nil
 }
 
-// ClearContainerWorkflowID は完了したワークフローIDをクリアします。
-func (a *DBActivity) ClearContainerWorkflowID(ctx context.Context, containerID uuid.UUID) error {
+// DBClearContainerWorkflowID は完了したワークフローIDをクリアします。
+func (a *DBActivity) DBClearContainerWorkflowID(ctx context.Context, containerID uuid.UUID) error {
 	result := database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
 		Updates(map[string]interface{}{

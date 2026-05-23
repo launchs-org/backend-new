@@ -22,9 +22,9 @@ var ingressRouteGVR = schema.GroupVersionResource{
 	Resource: "ingressroutes",
 }
 
-// CreateOrUpdate は Traefik IngressRoute を作成または更新します。
+// IngressApply は Traefik IngressRoute を作成または更新します。
 // unstructured で CRD を操作し、Traefik に HTTP ルートを登録します。
-func (a *IngressActivity) CreateOrUpdate(ctx context.Context, spec IngressSpec) error {
+func (a *IngressActivity) IngressApply(ctx context.Context, spec IngressSpec) error {
 	dynClient := database.K8sDynamicClient
 
 	obj := &unstructured.Unstructured{
@@ -78,8 +78,8 @@ func (a *IngressActivity) CreateOrUpdate(ctx context.Context, spec IngressSpec) 
 	return nil
 }
 
-// Delete は IngressRoute を削除します。
-func (a *IngressActivity) Delete(ctx context.Context, namespace, name string) error {
+// IngressDelete は IngressRoute を削除します。
+func (a *IngressActivity) IngressDelete(ctx context.Context, namespace, name string) error {
 	dynClient := database.K8sDynamicClient
 	err := dynClient.Resource(ingressRouteGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {

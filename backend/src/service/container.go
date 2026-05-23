@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,15 +19,21 @@ import (
 // ---- Temporal ワークフロー入力型 ----
 
 // BuildDeployWorkflowInput は BuildDeployWorkflow の入力です。
+// builder の BuildWorkflowInput と JSON フィールド名を一致させます。
 type BuildDeployWorkflowInput struct {
-	ContainerID  string `json:"container_id"`
-	ProjectID    string `json:"project_id"`
-	GitRepo      string `json:"git_repo"`
-	GitBranch    string `json:"git_branch"`
-	GitCommit    string `json:"git_commit"`
-	Subdir       string `json:"subdir"`
-	ResourceSize string `json:"resource_size"`
-	Replicas     int    `json:"replicas"`
+	ContainerID         string `json:"ContainerID"`
+	BuildJobID          string `json:"BuildJobID"`
+	ProjectID           string `json:"ProjectID"`
+	Namespace           string `json:"Namespace"`
+	GitRepo             string `json:"GitRepo"`
+	GitBranch           string `json:"GitBranch"`
+	GitCommit           string `json:"GitCommit"`
+	GitSubdir           string `json:"GitSubdir"`
+	HarborProjectName   string `json:"HarborProjectName"`
+	HarborRobotUsername string `json:"HarborRobotUsername"`
+	HarborRobotPassword string `json:"HarborRobotPassword"`
+	ResourceSize        string `json:"ResourceSize"`
+	Replicas            int    `json:"Replicas"`
 }
 
 // ScaleWorkflowInput は ScaleWorkflow の入力です。
@@ -65,6 +72,7 @@ type containerService struct {
 	containerRepo repository.ContainerRepository
 	envVarRepo    repository.EnvVarRepository
 	portRepo      repository.PortRepository
+	buildJobRepo  repository.BuildJobRepository
 	temporal      client.Client
 }
 
@@ -74,6 +82,7 @@ func NewContainerService(
 	containerRepo repository.ContainerRepository,
 	envVarRepo repository.EnvVarRepository,
 	portRepo repository.PortRepository,
+	buildJobRepo repository.BuildJobRepository,
 	temporalClient client.Client,
 ) ContainerService {
 	return &containerService{
@@ -81,16 +90,53 @@ func NewContainerService(
 		containerRepo: containerRepo,
 		envVarRepo:    envVarRepo,
 		portRepo:      portRepo,
+		buildJobRepo:  buildJobRepo,
 		temporal:      temporalClient,
 	}
 }
 
-func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (string, string, error) {
+func (s *containerService) List(ctx context.Context, projectID uuid.UUID) ([]model.Container, error) {
+	return s.containerRepo.FindByProjectID(ctx, projectID)
+}
+
+func (s *containerService) Get(ctx context.Context, projectID, containerID uuid.UUID) (*model.Container, error) {
+	container, err := s.containerRepo.FindByIDWithDetails(ctx, containerID)
+	if err != nil {
+		return nil, &apperrors.NotFoundError{Resource: "container", ID: containerID.String()}
+	}
+	if container.ProjectID != projectID {
+		return nil, &apperrors.ForbiddenError{Message: "access denied"}
+	}
+	return container, nil
+}
+
+func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (*model.Container, string, error) {
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
-		return "", "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
-	_ = project
+
+	// Harbor 情報がまだない場合は CreateProjectWorkflow の完了を待ちます。
+	// プロジェクト作成直後にデプロイした場合、ワークフローがまだ実行中の可能性があります。
+	if project.HarborRobotUsername == "" {
+		createWorkflowID := fmt.Sprintf("create-project-%s", projectID.String())
+		fmt.Printf("[INFO] Harbor 未設定、CreateProjectWorkflow 完了待ち: workflowID=%s\n", createWorkflowID)
+		we := s.temporal.GetWorkflow(ctx, createWorkflowID, "")
+		if waitErr := we.Get(ctx, nil); waitErr != nil {
+			fmt.Printf("[ERROR] CreateProjectWorkflow 失敗: workflowID=%s err=%v\n", createWorkflowID, waitErr)
+			return nil, "", fmt.Errorf("Harbor 初期化エラー: %w", waitErr)
+		}
+		// ワークフロー完了後に Harbor 情報を再取得
+		project, err = s.projectRepo.FindByID(ctx, projectID)
+		if err != nil {
+			return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+		}
+		if project.HarborRobotUsername == "" {
+			fmt.Printf("[ERROR] CreateProjectWorkflow 完了後も Harbor 情報が空: projectID=%s\n", projectID.String())
+			return nil, "", fmt.Errorf("Harbor 初期化失敗: CreateProjectWorkflow は完了しましたが Harbor 認証情報が保存されていません")
+		}
+		fmt.Printf("[INFO] Harbor 情報取得完了: projectID=%s username=%s\n", projectID.String(), project.HarborRobotUsername)
+	}
 
 	containerID := uuid.New()
 	resourceSize := req.ResourceSize
@@ -102,6 +148,8 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		replicas = 1
 	}
 
+	gitRepo := normalizeGitRepo(req.GitRepo)
+
 	container := &model.Container{
 		ID:           containerID,
 		ProjectID:    projectID,
@@ -109,12 +157,12 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		Status:       string(model.ContainerStatusPending),
 		Replicas:     replicas,
 		ResourceSize: resourceSize,
-		GitRepo:      &req.GitRepo,
+		GitRepo:      &gitRepo,
 		GitBranch:    &req.GitBranch,
 		GitSubdir:    strPtr(req.Subdir),
 	}
 	if err := s.containerRepo.Create(ctx, container); err != nil {
-		return "", "", fmt.Errorf("failed to create container: %w", err)
+		return nil, "", fmt.Errorf("failed to create container: %w", err)
 	}
 
 	// 環境変数を保存します
@@ -129,7 +177,7 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 			}
 		}
 		if err := s.envVarRepo.UpsertContainerEnvVars(ctx, containerID, envVars); err != nil {
-			return "", "", fmt.Errorf("failed to save env vars: %w", err)
+			return nil, "", fmt.Errorf("failed to save env vars: %w", err)
 		}
 	}
 
@@ -143,9 +191,28 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 				Protocol:    p.Protocol,
 			}
 			if err := s.portRepo.Create(ctx, port); err != nil {
-				return "", "", fmt.Errorf("failed to save port: %w", err)
+				return nil, "", fmt.Errorf("failed to save port: %w", err)
 			}
 		}
+	}
+
+	// BuildJob レコードを作成します
+	buildJobID := uuid.New()
+	subdir := req.Subdir
+	if subdir == "" {
+		subdir = "."
+	}
+	buildJob := &model.BuildJob{
+		ID:          buildJobID,
+		ContainerID: containerID,
+		GitRepo:     gitRepo,
+		GitBranch:   req.GitBranch,
+		GitCommit:   req.GitCommit,
+		Subdir:      subdir,
+		Status:      string(model.BuildJobStatusPending),
+	}
+	if err := s.buildJobRepo.Create(ctx, buildJob); err != nil {
+		return nil, "", fmt.Errorf("failed to create build job: %w", err)
 	}
 
 	wfOpts := client.StartWorkflowOptions{
@@ -153,34 +220,40 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		TaskQueue: temporal.BuilderQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowBuildDeploy, BuildDeployWorkflowInput{
-		ContainerID:  containerID.String(),
-		ProjectID:    projectID.String(),
-		GitRepo:      req.GitRepo,
-		GitBranch:    req.GitBranch,
-		GitCommit:    req.GitCommit,
-		Subdir:       req.Subdir,
-		ResourceSize: resourceSize,
-		Replicas:     replicas,
+		ContainerID:         containerID.String(),
+		BuildJobID:          buildJobID.String(),
+		ProjectID:           projectID.String(),
+		Namespace:           project.Namespace,
+		GitRepo:             gitRepo,
+		GitBranch:           req.GitBranch,
+		GitCommit:           req.GitCommit,
+		GitSubdir:           req.Subdir,
+		HarborProjectName:   project.HarborProjectName,
+		HarborRobotUsername: project.HarborRobotUsername,
+		HarborRobotPassword: project.HarborRobotPassword,
+		ResourceSize:        resourceSize,
+		Replicas:            replicas,
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("failed to start BuildDeployWorkflow: %w", err)
+		return nil, "", fmt.Errorf("failed to start BuildDeployWorkflow: %w", err)
 	}
 
-	// ワークフロー ID を DB に保存します
 	workflowID := we.GetID()
 	if err := s.containerRepo.UpdateActiveDeployWorkflowID(ctx, containerID, &workflowID); err != nil {
-		return "", "", fmt.Errorf("failed to update workflow id: %w", err)
+		return nil, "", fmt.Errorf("failed to update workflow id: %w", err)
+	}
+	if err := s.buildJobRepo.UpdateWorkflowID(ctx, buildJobID, workflowID); err != nil {
+		return nil, "", fmt.Errorf("failed to update build job workflow id: %w", err)
 	}
 
-	return containerID.String(), workflowID, nil
+	return container, workflowID, nil
 }
 
-func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (string, string, error) {
-	project, err := s.projectRepo.FindByID(ctx, projectID)
+func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (*model.Container, string, error) {
+	_, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
-		return "", "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
-	_ = project
 
 	containerID := uuid.New()
 	resourceSize := req.ResourceSize
@@ -197,7 +270,7 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		ResourceSize: resourceSize,
 	}
 	if err := s.containerRepo.Create(ctx, container); err != nil {
-		return "", "", fmt.Errorf("failed to create container: %w", err)
+		return nil, "", fmt.Errorf("failed to create container: %w", err)
 	}
 
 	input := DeployTemplateWorkflowInput{
@@ -221,15 +294,15 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeploy, input)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to start DeployWorkflow: %w", err)
+		return nil, "", fmt.Errorf("failed to start DeployWorkflow: %w", err)
 	}
 
 	workflowID := we.GetID()
 	if err := s.containerRepo.UpdateActiveDeployWorkflowID(ctx, containerID, &workflowID); err != nil {
-		return "", "", fmt.Errorf("failed to update workflow id: %w", err)
+		return nil, "", fmt.Errorf("failed to update workflow id: %w", err)
 	}
 
-	return containerID.String(), workflowID, nil
+	return container, workflowID, nil
 }
 
 func (s *containerService) Scale(ctx context.Context, projectID, containerID uuid.UUID, replicas int) (string, error) {
@@ -291,6 +364,78 @@ func (s *containerService) Redeploy(ctx context.Context, projectID, containerID 
 	return workflowID, nil
 }
 
+func (s *containerService) Rebuild(ctx context.Context, projectID, containerID uuid.UUID) (string, error) {
+	container, err := s.containerRepo.FindByID(ctx, containerID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "container", ID: containerID.String()}
+	}
+	if container.ProjectID != projectID {
+		return "", &apperrors.ForbiddenError{Message: "access denied"}
+	}
+	if container.GitRepo == nil || *container.GitRepo == "" {
+		return "", fmt.Errorf("container is not a GitHub deploy container")
+	}
+
+	project, err := s.projectRepo.FindByID(ctx, projectID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+	}
+
+	buildJobID := uuid.New()
+	gitBranch := ""
+	if container.GitBranch != nil {
+		gitBranch = *container.GitBranch
+	}
+	subdir := "."
+	if container.GitSubdir != nil && *container.GitSubdir != "" {
+		subdir = *container.GitSubdir
+	}
+	gitRepo := normalizeGitRepo(*container.GitRepo)
+	buildJob := &model.BuildJob{
+		ID:          buildJobID,
+		ContainerID: containerID,
+		GitRepo:     gitRepo,
+		GitBranch:   gitBranch,
+		Subdir:      subdir,
+		Status:      string(model.BuildJobStatusPending),
+	}
+	if err := s.buildJobRepo.Create(ctx, buildJob); err != nil {
+		return "", fmt.Errorf("failed to create build job: %w", err)
+	}
+
+	wfOpts := client.StartWorkflowOptions{
+		ID:        fmt.Sprintf("build-deploy-%s-%d", containerID.String(), time.Now().UnixNano()),
+		TaskQueue: temporal.BuilderQueue,
+	}
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowBuildDeploy, BuildDeployWorkflowInput{
+		ContainerID:         containerID.String(),
+		BuildJobID:          buildJobID.String(),
+		ProjectID:           projectID.String(),
+		Namespace:           project.Namespace,
+		GitRepo:             gitRepo,
+		GitBranch:           gitBranch,
+		GitSubdir:           subdir,
+		HarborProjectName:   project.HarborProjectName,
+		HarborRobotUsername: project.HarborRobotUsername,
+		HarborRobotPassword: project.HarborRobotPassword,
+		ResourceSize:        container.ResourceSize,
+		Replicas:            container.Replicas,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to start BuildDeployWorkflow: %w", err)
+	}
+
+	workflowID := we.GetID()
+	if err := s.containerRepo.UpdateActiveDeployWorkflowID(ctx, containerID, &workflowID); err != nil {
+		return "", fmt.Errorf("failed to update workflow id: %w", err)
+	}
+	if err := s.buildJobRepo.UpdateWorkflowID(ctx, buildJobID, workflowID); err != nil {
+		return "", fmt.Errorf("failed to update build job workflow id: %w", err)
+	}
+
+	return workflowID, nil
+}
+
 func (s *containerService) Delete(ctx context.Context, projectID, containerID uuid.UUID) (string, error) {
 	container, err := s.containerRepo.FindByID(ctx, containerID)
 	if err != nil {
@@ -305,6 +450,10 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
+	// build_jobs の外部キー制約があるため先に削除
+	if err := s.buildJobRepo.DeleteByContainerID(ctx, containerID); err != nil {
+		return "", fmt.Errorf("failed to delete build jobs: %w", err)
+	}
 	if err := s.containerRepo.Delete(ctx, containerID); err != nil {
 		return "", fmt.Errorf("failed to delete container: %w", err)
 	}
@@ -387,4 +536,12 @@ func generateToken(n int) (string, error) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+// normalizeGitRepo は "owner/repo" または GitHub URL を "https://github.com/owner/repo" に正規化します。
+func normalizeGitRepo(raw string) string {
+	if strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://") {
+		return strings.TrimSuffix(raw, ".git")
+	}
+	return "https://github.com/" + strings.TrimSuffix(raw, ".git")
 }

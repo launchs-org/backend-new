@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"strconv"
 )
@@ -46,11 +47,17 @@ func DatabaseURL() string {
 
 // HarborEndpoint は Harbor のエンドポイント URL を返します。
 func HarborEndpoint() string {
-	return getEnv("HARBOR_ENDPOINT", "https://harbor.launchs.org")
+	return getEnv("HARBOR_ENDPOINT", "https://harbor.main-harbor")
 }
 
 // HarborAdminUser は Harbor 管理者ユーザー名を返します。
 func HarborAdminUser() string {
+	// base64でデコード
+	decoded,err := base64.StdEncoding.DecodeString(getEnv("HARBOR_ADMIN_USER", "admin"))
+	if err == nil {
+		return string(decoded)
+	}
+	
 	return getEnv("HARBOR_ADMIN_USER", "admin")
 }
 

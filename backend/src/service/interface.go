@@ -61,12 +61,15 @@ type ProjectService interface {
 
 // ContainerService はコンテナのビジネスロジックを抽象化します。
 type ContainerService interface {
-	BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (containerID, workflowID string, err error)
-	DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (containerID, workflowID string, err error)
+	List(ctx context.Context, projectID uuid.UUID) ([]model.Container, error)
+	Get(ctx context.Context, projectID, containerID uuid.UUID) (*model.Container, error)
+	BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (container *model.Container, workflowID string, err error)
+	DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (container *model.Container, workflowID string, err error)
 	Scale(ctx context.Context, projectID, containerID uuid.UUID, replicas int) (workflowID string, err error)
 	Redeploy(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
 	Delete(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
 	Update(ctx context.Context, projectID, containerID uuid.UUID, resourceSize string) error
+	Rebuild(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
 	CreateWebhook(ctx context.Context, projectID, containerID uuid.UUID) (webhookURL, token string, err error)
 	HandleWebhook(ctx context.Context, token string) error
 }

@@ -3,7 +3,9 @@
 package response
 
 import (
+	"fmt"
 	"net/http"
+	"runtime/debug"
 
 	apperrors "launchs/shared/errors"
 
@@ -34,6 +36,7 @@ func Created(c *echo.Context, data interface{}) error {
 
 // Error はエラーの種類に応じた HTTP ステータスでエラーレスポンスを返します。
 func Error(c *echo.Context, err error) error {
+	req := c.Request()
 	switch e := err.(type) {
 	case *apperrors.NotFoundError:
 		return c.JSON(http.StatusNotFound, APIResponse{Data: nil, Error: ErrorBody{Code: "NOT_FOUND", Message: e.Error()}})
@@ -46,6 +49,7 @@ func Error(c *echo.Context, err error) error {
 	case *apperrors.ValidationError:
 		return c.JSON(http.StatusBadRequest, APIResponse{Data: nil, Error: ErrorBody{Code: "BAD_REQUEST", Message: e.Error()}})
 	default:
+		fmt.Printf("[ERROR] %s %s => %v\n%s\n", req.Method, req.URL.Path, err, debug.Stack())
 		return c.JSON(http.StatusInternalServerError, APIResponse{Data: nil, Error: ErrorBody{Code: "INTERNAL_ERROR", Message: "internal server error"}})
 	}
 }

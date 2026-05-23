@@ -15,8 +15,8 @@ import (
 // ServiceActivity は Kubernetes Service の作成・削除を担当します。
 type ServiceActivity struct{}
 
-// CreateOrUpdate は Service を作成または更新します。
-func (a *ServiceActivity) CreateOrUpdate(ctx context.Context, spec ServiceSpec) error {
+// ServiceApply は Service を作成または更新します。
+func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) error {
 	k8s := database.K8sClientset
 
 	ports := make([]corev1.ServicePort, 0, len(spec.Ports))
@@ -66,8 +66,8 @@ func (a *ServiceActivity) CreateOrUpdate(ctx context.Context, spec ServiceSpec) 
 	return nil
 }
 
-// Delete は Service を削除します。
-func (a *ServiceActivity) Delete(ctx context.Context, namespace, name string) error {
+// ServiceDelete は Service を削除します。
+func (a *ServiceActivity) ServiceDelete(ctx context.Context, namespace, name string) error {
 	k8s := database.K8sClientset
 	err := k8s.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {

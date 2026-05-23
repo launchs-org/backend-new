@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
+	"runtime/debug"
+	"time"
 
 	"backend/handler"
 	"backend/middlewares"
@@ -62,7 +65,7 @@ func main() {
 
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, snapshotRepo, temporalClient)
-	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, temporalClient)
+	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, temporalClient)
 	envVarSvc := service.NewEnvVarService(projectRepo, containerRepo, envVarRepo)
 	portSvc := service.NewPortService(projectRepo, containerRepo, portRepo)
 	routeSvc := service.NewRouteService(projectRepo, containerRepo, routeRepo, temporalClient)
@@ -91,7 +94,36 @@ func main() {
 
 	// Echo ルーター設定
 	e := echo.New()
-	e.Use(middleware.RequestLogger())
+
+	// リクエストログ: メソッド・パス・ステータス・レイテンシを標準出力へ
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogMethod:  true,
+		LogURI:     true,
+		LogStatus:  true,
+		LogLatency: true,
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
+			fmt.Printf("[REQ] %s %s status=%d latency=%s\n",
+				v.Method, v.URI, v.Status, v.Latency.Round(time.Millisecond))
+			return nil
+		},
+	}))
+
+	// パニック時にスタックトレースを標準出力へ出してから 500 を返す
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[PANIC] %v\n%s\n", r, debug.Stack())
+					err = c.JSON(http.StatusInternalServerError, map[string]interface{}{
+						"data":  nil,
+						"error": map[string]string{"code": "PANIC", "message": "internal server error"},
+					})
+				}
+			}()
+			return next(c)
+		}
+	})
+
 	e.Use(middleware.Recover())
 
 	// ヘルスチェック（認証不要）
@@ -130,6 +162,7 @@ func main() {
 	v1.PUT("/projects/:project_id/containers/:container_id", containerH.Update)
 	v1.DELETE("/projects/:project_id/containers/:container_id", containerH.Delete)
 	v1.POST("/projects/:project_id/containers/:container_id/redeploy", containerH.Redeploy)
+	v1.POST("/projects/:project_id/containers/:container_id/rebuild", containerH.Rebuild)
 	v1.PUT("/projects/:project_id/containers/:container_id/scale", containerH.Scale)
 	v1.POST("/projects/:project_id/containers/:container_id/webhook", containerH.CreateWebhook)
 	v1.GET("/projects/:project_id/containers/:container_id/status-histories", containerH.GetStatusHistories)

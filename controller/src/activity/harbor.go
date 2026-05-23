@@ -3,6 +3,7 @@ package activity
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,11 +22,11 @@ type RobotAccountResult struct {
 	Password string
 }
 
-// CreateProject は Harbor にプロジェクトを作成します。
-func (a *HarborActivity) CreateProject(ctx context.Context, projectName string) error {
+// HarborCreateProject は Harbor にプロジェクトを作成します。
+func (a *HarborActivity) HarborCreateProject(ctx context.Context, projectName string) error {
 	body, _ := json.Marshal(map[string]interface{}{
 		"project_name": projectName,
-		"public":       false,
+		"public":       true,
 	})
 	resp, err := harborRequest(ctx, http.MethodPost, "/api/v2.0/projects", body)
 	if err != nil {
@@ -41,12 +42,13 @@ func (a *HarborActivity) CreateProject(ctx context.Context, projectName string) 
 	return nil
 }
 
-// CreateRobotAccount は Harbor プロジェクトにロボットアカウントを作成し、認証情報を返します。
-func (a *HarborActivity) CreateRobotAccount(ctx context.Context, projectName string) (*RobotAccountResult, error) {
+// HarborCreateRobotAccount は Harbor プロジェクトにロボットアカウントを作成し、認証情報を返します。
+func (a *HarborActivity) HarborCreateRobotAccount(ctx context.Context, projectName string) (*RobotAccountResult, error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":        "launchs-builder",
 		"description": "Launchs builder robot account",
 		"duration":    -1, // 期限なし
+		"level":       "project",
 		"permissions": []map[string]interface{}{
 			{
 				"kind":      "project",
@@ -81,8 +83,8 @@ func (a *HarborActivity) CreateRobotAccount(ctx context.Context, projectName str
 	return &RobotAccountResult{Username: result.Name, Password: result.Secret}, nil
 }
 
-// DeleteProject は Harbor プロジェクトを削除します。
-func (a *HarborActivity) DeleteProject(ctx context.Context, projectName string) error {
+// HarborDeleteProject は Harbor プロジェクトを削除します。
+func (a *HarborActivity) HarborDeleteProject(ctx context.Context, projectName string) error {
 	resp, err := harborRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v2.0/projects/%s", projectName), nil)
 	if err != nil {
 		return fmt.Errorf("Harbor プロジェクト削除エラー: %w", err)
@@ -96,8 +98,8 @@ func (a *HarborActivity) DeleteProject(ctx context.Context, projectName string) 
 	return nil
 }
 
-// DeleteImage は Harbor から特定のイメージを削除します。
-func (a *HarborActivity) DeleteImage(ctx context.Context, projectName, repoName, tag string) error {
+// HarborDeleteImage は Harbor から特定のイメージを削除します。
+func (a *HarborActivity) HarborDeleteImage(ctx context.Context, projectName, repoName, tag string) error {
 	path := fmt.Sprintf("/api/v2.0/projects/%s/repositories/%s/artifacts/%s", projectName, repoName, tag)
 	resp, err := harborRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
@@ -127,10 +129,21 @@ func harborRequest(ctx context.Context, method, path string, body []byte) (*http
 		return nil, err
 	}
 
+	// ログにユーザー名とパスワードを表示
+	fmt.Printf("Username: %s, Password: %s", config.HarborAdminUser(), config.HarborAdminPassword())
+
 	req.SetBasicAuth(config.HarborAdminUser(), config.HarborAdminPassword())
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	return http.DefaultClient.Do(req)
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	return client.Do(req)
 }

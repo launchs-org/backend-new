@@ -81,6 +81,7 @@ type BuildJobRepository interface {
 	UpdateWorkflowID(ctx context.Context, id uuid.UUID, workflowID string) error
 	UpdateFinishedAt(ctx context.Context, id uuid.UUID) error
 	UpdateImageID(ctx context.Context, id uuid.UUID, imageID uuid.UUID) error
+	DeleteByContainerID(ctx context.Context, containerID uuid.UUID) error
 }
 
 // VolumeRepository はボリューム・マウント情報の CRUD を抽象化します。

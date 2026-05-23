@@ -54,3 +54,7 @@ func (r *buildJobRepository) UpdateFinishedAt(ctx context.Context, id uuid.UUID)
 func (r *buildJobRepository) UpdateImageID(ctx context.Context, id uuid.UUID, imageID uuid.UUID) error {
 	return r.db.WithContext(ctx).Model(&model.BuildJob{}).Where("id = ?", id).Update("image_id", imageID).Error
 }
+
+func (r *buildJobRepository) DeleteByContainerID(ctx context.Context, containerID uuid.UUID) error {
+	return r.db.WithContext(ctx).Where("container_id = ?", containerID).Delete(&model.BuildJob{}).Error
+}

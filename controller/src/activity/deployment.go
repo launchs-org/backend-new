@@ -16,9 +16,9 @@ import (
 // DeploymentActivity は Kubernetes Deployment の作成・更新・削除を担当します。
 type DeploymentActivity struct{}
 
-// CreateOrUpdate は Deployment を作成または更新します。
+// DeploymentApply は Deployment を作成または更新します。
 // 冪等性を担保するため Apply パターンを使います（既存あれば更新）。
-func (a *DeploymentActivity) CreateOrUpdate(ctx context.Context, spec DeploymentSpec) error {
+func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec DeploymentSpec) error {
 	k8s := database.K8sClientset
 	replicas := int32(spec.Replicas)
 	if replicas <= 0 {
@@ -132,8 +132,8 @@ func (a *DeploymentActivity) CreateOrUpdate(ctx context.Context, spec Deployment
 	return nil
 }
 
-// Delete は Deployment を削除します。
-func (a *DeploymentActivity) Delete(ctx context.Context, namespace, name string) error {
+// DeploymentDelete は Deployment を削除します。
+func (a *DeploymentActivity) DeploymentDelete(ctx context.Context, namespace, name string) error {
 	k8s := database.K8sClientset
 	err := k8s.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -142,8 +142,8 @@ func (a *DeploymentActivity) Delete(ctx context.Context, namespace, name string)
 	return nil
 }
 
-// UpdateReplicas は Deployment のレプリカ数を変更します。
-func (a *DeploymentActivity) UpdateReplicas(ctx context.Context, namespace, name string, replicas int) error {
+// DeploymentUpdateReplicas は Deployment のレプリカ数を変更します。
+func (a *DeploymentActivity) DeploymentUpdateReplicas(ctx context.Context, namespace, name string, replicas int) error {
 	k8s := database.K8sClientset
 	scale, err := k8s.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -157,8 +157,8 @@ func (a *DeploymentActivity) UpdateReplicas(ctx context.Context, namespace, name
 	return nil
 }
 
-// RolloutRestart は Deployment の rollout restart を行います（アノテーション更新で再起動を促す）。
-func (a *DeploymentActivity) RolloutRestart(ctx context.Context, namespace, name string) error {
+// DeploymentRolloutRestart は Deployment の rollout restart を行います（アノテーション更新で再起動を促す）。
+func (a *DeploymentActivity) DeploymentRolloutRestart(ctx context.Context, namespace, name string) error {
 	k8s := database.K8sClientset
 	deployment, err := k8s.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

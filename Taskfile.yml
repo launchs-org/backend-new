@@ -37,6 +37,13 @@ tasks:
     cmds:
       - docker compose {{.COMPOSE_ALL}} up -d --build
     silent: true
+  
+  reup:
+    desc: "特定のコンテナの再起動 (引数でコンテナ指定可: task reup -- app)"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} down {{.CLI_ARGS}}
+      - docker compose {{.COMPOSE_ALL}} up {{.CLI_ARGS}} -d --build
+    silent: true
 
   up-app:
     desc: "インフラ + アプリのみ起動（Temporal なし）"
@@ -73,7 +80,7 @@ tasks:
   clean:
     desc: "全サービスを停止してイメージ・ボリュームをすべて削除"
     cmds:
-      - docker compose {{.COMPOSE_ALL}} down --remove-orphans --rmi all --volumes
+      - docker compose {{.COMPOSE_ALL}} down --remove-orphans --volumes
     silent: true
 
   # ─── ログ ───────────────────────────────────────────────────────────────

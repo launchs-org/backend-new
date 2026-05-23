@@ -26,7 +26,7 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 	deployAct := &activity.DeploymentActivity{}
 
 	// 1. ステータスを deploying に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
 		return err
 	}
 
@@ -75,23 +75,23 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 	}
 
 	// 2. Kubernetes Deployment を Apply
-	if err := workflow.ExecuteActivity(ctx, deployAct.CreateOrUpdate, spec).Get(ctx, nil); err != nil {
-		_ = workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, spec).Get(ctx, nil); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}
 
 	// 3. ステータスを running に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// 4. Deployment レコードを DB に記録
-	if err := workflow.ExecuteActivity(ctx, dbAct.CreateDeploymentRecord, input.ContainerID, input.ImageRef, input.Replicas).Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBCreateDeploymentRecord, input.ContainerID, input.ImageRef, input.Replicas).Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// 5. ワークフローID をクリア
-	_ = workflow.ExecuteActivity(ctx, dbAct.ClearContainerWorkflowID, input.ContainerID).Get(ctx, nil)
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBClearContainerWorkflowID, input.ContainerID).Get(ctx, nil)
 
 	return nil
 }
@@ -110,18 +110,18 @@ func RedeployWorkflow(ctx workflow.Context, input RedeployInput) error {
 	deployAct := &activity.DeploymentActivity{}
 
 	// 1. ステータスを deploying に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// 2. rollout restart
-	if err := workflow.ExecuteActivity(ctx, deployAct.RolloutRestart, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
-		_ = workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentRolloutRestart, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
 		return err
 	}
 
 	// 3. ステータスを running に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
 		return err
 	}
 
@@ -142,12 +142,12 @@ func DeleteContainerWorkflow(ctx workflow.Context, input DeleteContainerInput) e
 	deployAct := &activity.DeploymentActivity{}
 
 	// 1. ステータスを stopped に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.UpdateContainerStatus, input.ContainerID, "stopped").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "stopped").Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// 2. Kubernetes Deployment を削除
-	if err := workflow.ExecuteActivity(ctx, deployAct.Delete, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentDelete, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
 		return err
 	}
 

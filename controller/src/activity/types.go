@@ -58,3 +58,4 @@ type VolumeMount struct {
 	PVCName   string // PVC のリソース名
 	MountPath string
 }
+

@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -18,8 +19,8 @@ import (
 
 // BuildInput はビルドアクティビティへの入力です。
 type BuildInput struct {
-	ContainerID         uuid.UUID
-	BuildJobID          uuid.UUID
+	ContainerID         string
+	BuildJobID          string	
 	GitRepo             string
 	GitBranch           string
 	GitSubdir           string
@@ -42,6 +43,8 @@ type BuildActivity struct{}
 // Build はイメージをビルドして Harbor にプッシュします。
 // ビルドログは DB（ContainerLog）にバッファリングして保存します。
 func (a *BuildActivity) Build(ctx context.Context, input BuildInput) (*BuildResult, error) {
+	log.Println("Input:", input)
+
 	clientset := database.K8sClientset.(*kubernetes.Clientset)
 
 	registry := config.HarborRegistry()
@@ -64,7 +67,7 @@ func (a *BuildActivity) Build(ctx context.Context, input BuildInput) (*BuildResu
 		RegistryUsername: input.HarborRobotUsername,
 		RegistryPassword: input.HarborRobotPassword,
 		Namespace:        buildNamespace,
-		JobID:            input.BuildJobID.String(),
+		JobID:            input.BuildJobID,
 		Timeout:          30 * time.Minute,
 	}
 
@@ -87,7 +90,7 @@ func (a *BuildActivity) Build(ctx context.Context, input BuildInput) (*BuildResu
 		for line := range logCh {
 			logs = append(logs, model.ContainerLog{
 				ID:          uuid.New(),
-				ContainerID: input.ContainerID,
+				ContainerID: uuid.MustParse(input.ContainerID),
 				// ビルドログは "build:{build_job_id}" という PodName で識別
 				PodName:   &buildSource,
 				Timestamp: time.Now(),

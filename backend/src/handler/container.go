@@ -7,6 +7,7 @@ import (
 	"backend/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"launchs/shared/model"
 )
 
 // ContainerHandler はコンテナ関連のリクエストを処理します。
@@ -19,14 +20,39 @@ func NewContainerHandler(svc service.ContainerService) *ContainerHandler {
 }
 
 func (h *ContainerHandler) List(c *echo.Context) error {
-	// TODO: コンテナ一覧はリポジトリ直接アクセス必要のため、直接DB呼び出し
-	// 現フェーズでは service に委譲せず、この handler でリポジトリ参照が必要です。
-	// ただし、ここでは container service 側に List を追加することで対応します。
-	return response.OK(c, []interface{}{})
+	projectID, err := uuid.Parse(c.Param("project_id"))
+	if err != nil {
+		return badRequest(c, "invalid project_id")
+	}
+
+	containers, err := h.svc.List(c.Request().Context(), projectID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+
+	result := make([]map[string]interface{}, len(containers))
+	for i := range containers {
+		result[i] = containerSummaryJSON(&containers[i])
+	}
+	return response.OK(c, result)
 }
 
 func (h *ContainerHandler) Get(c *echo.Context) error {
-	return response.OK(c, map[string]interface{}{})
+	projectID, err := uuid.Parse(c.Param("project_id"))
+	if err != nil {
+		return badRequest(c, "invalid project_id")
+	}
+	containerID, err := uuid.Parse(c.Param("container_id"))
+	if err != nil {
+		return badRequest(c, "invalid container_id")
+	}
+
+	container, err := h.svc.Get(c.Request().Context(), projectID, containerID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+
+	return response.OK(c, containerDetailJSON(container))
 }
 
 func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
@@ -36,15 +62,15 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 	}
 
 	var req struct {
-		Name         string              `json:"name"`
-		GitRepo      string              `json:"git_repo"`
-		GitBranch    string              `json:"git_branch"`
-		GitCommit    string              `json:"git_commit"`
-		Subdir       string              `json:"subdir"`
-		ResourceSize string              `json:"resource_size"`
-		Replicas     int                 `json:"replicas"`
-		EnvVars      []envVarInputJSON   `json:"env_vars"`
-		Ports        []portInputJSON     `json:"ports"`
+		Name         string            `json:"name"`
+		GitRepo      string            `json:"git_repo"`
+		GitBranch    string            `json:"git_branch"`
+		GitCommit    string            `json:"git_commit"`
+		Subdir       string            `json:"git_subdir"`
+		ResourceSize string            `json:"resource_size"`
+		Replicas     int               `json:"replicas"`
+		EnvVars      []envVarInputJSON `json:"env_vars"`
+		Ports        []portInputJSON   `json:"ports"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
@@ -59,7 +85,7 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 		ports[i] = service.PortInput{Port: p.Port, Protocol: p.Protocol}
 	}
 
-	containerID, workflowID, err := h.svc.BuildDeploy(c.Request().Context(), projectID, service.BuildDeployRequest{
+	container, workflowID, err := h.svc.BuildDeploy(c.Request().Context(), projectID, service.BuildDeployRequest{
 		Name:         req.Name,
 		GitRepo:      req.GitRepo,
 		GitBranch:    req.GitBranch,
@@ -73,11 +99,9 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	_ = workflowID
 
-	return response.Created(c, map[string]string{
-		"container_id": containerID,
-		"workflow_id":  workflowID,
-	})
+	return response.Created(c, containerSummaryJSON(container))
 }
 
 func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
@@ -113,15 +137,13 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		treq.VolumeID = &vid
 	}
 
-	containerID, workflowID, err := h.svc.DeployFromTemplate(c.Request().Context(), projectID, treq)
+	container, workflowID, err := h.svc.DeployFromTemplate(c.Request().Context(), projectID, treq)
 	if err != nil {
 		return response.Error(c, err)
 	}
+	_ = workflowID
 
-	return response.Created(c, map[string]string{
-		"container_id": containerID,
-		"workflow_id":  workflowID,
-	})
+	return response.Created(c, containerSummaryJSON(container))
 }
 
 func (h *ContainerHandler) Update(c *echo.Context) error {
@@ -207,6 +229,23 @@ func (h *ContainerHandler) Scale(c *echo.Context) error {
 	return response.OK(c, map[string]string{"workflow_id": workflowID})
 }
 
+func (h *ContainerHandler) Rebuild(c *echo.Context) error {
+	projectID, err := uuid.Parse(c.Param("project_id"))
+	if err != nil {
+		return badRequest(c, "invalid project_id")
+	}
+	containerID, err := uuid.Parse(c.Param("container_id"))
+	if err != nil {
+		return badRequest(c, "invalid container_id")
+	}
+
+	workflowID, err := h.svc.Rebuild(c.Request().Context(), projectID, containerID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, map[string]string{"workflow_id": workflowID})
+}
+
 func (h *ContainerHandler) CreateWebhook(c *echo.Context) error {
 	projectID, err := uuid.Parse(c.Param("project_id"))
 	if err != nil {
@@ -230,6 +269,69 @@ func (h *ContainerHandler) CreateWebhook(c *echo.Context) error {
 func (h *ContainerHandler) GetStatusHistories(c *echo.Context) error {
 	// TODO: ContainerStatusHistoryRepository から取得する実装
 	return response.OK(c, []interface{}{})
+}
+
+// ---- レスポンス型 ----
+
+func containerSummaryJSON(c *model.Container) map[string]interface{} {
+	pods := buildPodsJSON(c)
+	return map[string]interface{}{
+		"id":                        c.ID.String(),
+		"name":                      c.Name,
+		"status":                    c.Status,
+		"replicas":                  c.Replicas,
+		"ready_replicas":            c.ReadyReplicas,
+		"failed_replicas":           c.FailedReplicas,
+		"resource_size":             c.ResourceSize,
+		"active_deploy_workflow_id": c.ActiveDeployWorkflowID,
+		"active_scale_workflow_id":  c.ActiveScaleWorkflowID,
+		"pods":                      pods,
+		"created_at":                c.CreatedAt,
+		"updated_at":                c.UpdatedAt,
+	}
+}
+
+func containerDetailJSON(c *model.Container) map[string]interface{} {
+	m := containerSummaryJSON(c)
+	m["git_repo"] = c.GitRepo
+	m["git_branch"] = c.GitBranch
+	m["git_subdir"] = c.GitSubdir
+	envVars := make([]map[string]interface{}, len(c.EnvVars))
+	for i, e := range c.EnvVars {
+		envVars[i] = map[string]interface{}{"id": e.ID.String(), "key": e.Key, "value": e.Value}
+	}
+	m["env_vars"] = envVars
+	ports := make([]map[string]interface{}, len(c.Ports))
+	for i, p := range c.Ports {
+		ports[i] = map[string]interface{}{"id": p.ID.String(), "port": p.Port, "protocol": p.Protocol}
+	}
+	m["ports"] = ports
+	routes := make([]map[string]interface{}, len(c.Routes))
+	for i, r := range c.Routes {
+		routes[i] = map[string]interface{}{
+			"id": r.ID.String(), "type": r.Type, "port": r.Port,
+			"protocol": r.Protocol, "subdomain": r.Subdomain, "created_at": r.CreatedAt,
+		}
+	}
+	m["routes"] = routes
+	mounts := []interface{}{}
+	m["mounts"] = mounts
+	return m
+}
+
+func buildPodsJSON(c *model.Container) []map[string]interface{} {
+	pods := make([]map[string]interface{}, len(c.PodStatuses))
+	for i, p := range c.PodStatuses {
+		pods[i] = map[string]interface{}{
+			"pod_name":      p.PodName,
+			"status":        p.Status,
+			"ready":         p.Ready,
+			"restart_count": p.RestartCount,
+			"node_name":     p.NodeName,
+			"started_at":    p.StartedAt,
+		}
+	}
+	return pods
 }
 
 // ---- 共通ヘルパー ----

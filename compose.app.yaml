@@ -50,6 +50,7 @@ services:
       - ./backend/src:/app
       - ./backend/received:/received
       - ./shared:/shared
+      - ./templates:/templates
     ports:
       - "8090:8090"
     env_file:
@@ -61,6 +62,8 @@ services:
       - /bin/bash
       - -c
       - "exec go tool air -c ./.air.toml"
+    extra_hosts:
+      - "harbor.main-harbor:172.33.0.1"
     depends_on:
       redis:
         condition: service_started
@@ -88,6 +91,8 @@ services:
       - /bin/bash
       - -c
       - "exec go tool air -c ./.air.toml"
+    extra_hosts:
+      - "harbor.main-harbor:172.33.0.1"
     depends_on:
       app:
         condition: service_started
@@ -149,6 +154,7 @@ services:
       - /bin/bash
       - -c
       - "ip route add 172.33.0.0/16 via 172.20.0.1 && exec go tool air -c ./.air.toml"
+      
     depends_on:
       postgres:
         condition: service_healthy

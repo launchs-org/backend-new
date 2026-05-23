@@ -15,10 +15,11 @@ import (
 )
 
 // BuildWorkflowInput は BuildDeployWorkflow への入力です。
+// UUID フィールドはすべて string で受け取り、内部で uuid.Parse します。
 type BuildWorkflowInput struct {
-	ContainerID         uuid.UUID
-	BuildJobID          uuid.UUID
-	ProjectID           uuid.UUID
+	ContainerID         string
+	BuildJobID          string
+	ProjectID           string
 	Namespace           string
 	GitRepo             string
 	GitBranch           string
@@ -69,20 +70,23 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 
 	buildAct := &activity.BuildActivity{}
 
+	containerID, _ := uuid.Parse(input.ContainerID)
+	buildJobID, _ := uuid.Parse(input.BuildJobID)
+
 	// 1. ステータスを building に更新
-	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, input.ContainerID, "building").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, containerID, "building").Get(ctx, nil); err != nil {
 		return err
 	}
-	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, input.BuildJobID, "running", "").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, buildJobID, "running", "").Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// イメージタグ: build_job_id の先頭8文字
-	imageTag := input.BuildJobID.String()
+	imageTag := input.BuildJobID
 	if len(imageTag) > 8 {
 		imageTag = imageTag[:8]
 	}
-	containerName := input.ContainerID.String()
+	containerName := input.ContainerID
 	if len(containerName) > 8 {
 		containerName = containerName[:8]
 	}
@@ -104,24 +108,24 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 	var buildResult activity.BuildResult
 	if err := workflow.ExecuteActivity(ctx, buildAct.Build, buildInput).Get(ctx, &buildResult); err != nil {
 		// ビルド失敗時はステータスを failed に更新
-		_ = workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, input.ContainerID, "failed").Get(ctx, nil)
-		_ = workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, input.BuildJobID, "failed", "").Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, containerID, "failed").Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, buildJobID, "failed", "").Get(ctx, nil)
 		return err
 	}
 
 	// 3. Image レコードを DB に作成
 	var imageID uuid.UUID
-	if err := workflow.ExecuteActivity(ctx, buildAct.CreateImageRecord, input.ContainerID, input.BuildJobID, buildResult.ImageRef).Get(ctx, &imageID); err != nil {
+	if err := workflow.ExecuteActivity(ctx, buildAct.CreateImageRecord, containerID, buildJobID, buildResult.ImageRef).Get(ctx, &imageID); err != nil {
 		return err
 	}
 
 	// 4. コンテナの current_image_id を更新
-	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerImage, input.ContainerID, imageID).Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerImage, containerID, imageID).Get(ctx, nil); err != nil {
 		return err
 	}
 
 	// 5. BuildJob を complete に更新
-	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, input.BuildJobID, "complete", buildResult.ImageRef).Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, buildJobID, "complete", buildResult.ImageRef).Get(ctx, nil); err != nil {
 		return err
 	}
 
@@ -132,10 +136,8 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 		size = sizes["small"]
 	}
 
-	// EnvVars / Ports / VolumeMounts を controller の型に変換
-	// （controller パッケージに依存しないためここでは workflow.EnvVar を使う）
 	deployInput := buildDeployControllerInput{
-		ContainerID:    input.ContainerID,
+		ContainerID:    containerID,
 		Namespace:      input.Namespace,
 		DeploymentName: fmt.Sprintf("%s-%s", containerName, containerName),
 		ImageRef:       buildResult.ImageRef,

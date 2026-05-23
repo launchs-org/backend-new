@@ -15,9 +15,9 @@ import (
 // NamespaceActivity は Kubernetes Namespace の作成・削除を担当します。
 type NamespaceActivity struct{}
 
-// Create は Namespace と NetworkPolicy を作成します。
+// NamespaceCreate は Namespace と NetworkPolicy を作成します。
 // launchs-managed ラベルを付与し、Traefik / cloudflared からのトラフィックのみ許可します。
-func (a *NamespaceActivity) Create(ctx context.Context, namespace, projectID string) error {
+func (a *NamespaceActivity) NamespaceCreate(ctx context.Context, namespace, projectID string) error {
 	k8s := database.K8sClientset
 
 	nsSpec := &corev1.Namespace{
@@ -74,8 +74,8 @@ func (a *NamespaceActivity) Create(ctx context.Context, namespace, projectID str
 	return nil
 }
 
-// Delete は Namespace を削除します（配下のリソースも一括削除されます）。
-func (a *NamespaceActivity) Delete(ctx context.Context, namespace string) error {
+// NamespaceDelete は Namespace を削除します（配下のリソースも一括削除されます）。
+func (a *NamespaceActivity) NamespaceDelete(ctx context.Context, namespace string) error {
 	k8s := database.K8sClientset
 	err := k8s.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
