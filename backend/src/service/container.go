@@ -38,22 +38,25 @@ type BuildDeployWorkflowInput struct {
 
 // ScaleWorkflowInput は ScaleWorkflow の入力です。
 type ScaleWorkflowInput struct {
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Replicas    int    `json:"replicas"`
+	ContainerID    string `json:"ContainerID"`
+	Namespace      string `json:"Namespace"`
+	DeploymentName string `json:"DeploymentName"`
+	Replicas       int    `json:"Replicas"`
 }
 
 // RedeployWorkflowInput は RedeployWorkflow の入力です。
 type RedeployWorkflowInput struct {
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
+	ContainerID    string `json:"ContainerID"`
+	Namespace      string `json:"Namespace"`
+	DeploymentName string `json:"DeploymentName"`
 }
 
 // DeleteContainerWorkflowInput は DeleteContainerWorkflow の入力です。
 type DeleteContainerWorkflowInput struct {
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
+	ContainerID    string `json:"ContainerID"`
+	ProjectID      string `json:"ProjectID"`
+	Namespace      string `json:"Namespace"`
+	DeploymentName string `json:"DeploymentName"`
 }
 
 // DeployTemplateWorkflowInput はテンプレートデプロイの入力です。
@@ -314,14 +317,20 @@ func (s *containerService) Scale(ctx context.Context, projectID, containerID uui
 		return "", &apperrors.ForbiddenError{Message: "access denied"}
 	}
 
+	project, err := s.projectRepo.FindByID(ctx, projectID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("scale-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowScale, ScaleWorkflowInput{
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
-		Replicas:    replicas,
+		ContainerID:    containerID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
+		Replicas:       replicas,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start ScaleWorkflow: %w", err)
@@ -344,13 +353,19 @@ func (s *containerService) Redeploy(ctx context.Context, projectID, containerID 
 		return "", &apperrors.ForbiddenError{Message: "access denied"}
 	}
 
+	project, err := s.projectRepo.FindByID(ctx, projectID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("redeploy-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
+		ContainerID:    containerID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start RedeployWorkflow: %w", err)
@@ -450,9 +465,12 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
-	// build_jobs の外部キー制約があるため先に削除
+	// 外部キー制約のある関連テーブルを先にまとめて削除
 	if err := s.buildJobRepo.DeleteByContainerID(ctx, containerID); err != nil {
 		return "", fmt.Errorf("failed to delete build jobs: %w", err)
+	}
+	if err := s.containerRepo.DeleteRelated(ctx, containerID); err != nil {
+		return "", fmt.Errorf("failed to delete related records: %w", err)
 	}
 	if err := s.containerRepo.Delete(ctx, containerID); err != nil {
 		return "", fmt.Errorf("failed to delete container: %w", err)
@@ -463,9 +481,10 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteContainer, DeleteContainerWorkflowInput{
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
-		Namespace:   project.Namespace,
+		ContainerID:    containerID.String(),
+		ProjectID:      projectID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, containerID.String()[:8]),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start DeleteContainerWorkflow: %w", err)
@@ -519,9 +538,15 @@ func (s *containerService) HandleWebhook(ctx context.Context, token string) erro
 		ID:        fmt.Sprintf("redeploy-%s-%d", container.ID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
+	project, err := s.projectRepo.FindByID(ctx, container.ProjectID)
+	if err != nil {
+		return &apperrors.NotFoundError{Resource: "project", ID: container.ProjectID.String()}
+	}
+
 	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
-		ContainerID: container.ID.String(),
-		ProjectID:   container.ProjectID.String(),
+		ContainerID:    container.ID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: fmt.Sprintf("%s-%s", container.Name, container.ID.String()[:8]),
 	})
 	return err
 }

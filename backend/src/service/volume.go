@@ -13,39 +13,9 @@ import (
 	"backend/repository"
 )
 
-// CreateVolumeWorkflowInput は CreateVolumeWorkflow の入力です。
-type CreateVolumeWorkflowInput struct {
-	VolumeID     string `json:"volume_id"`
-	ProjectID    string `json:"project_id"`
-	Namespace    string `json:"namespace"`
-	Name         string `json:"name"`
-	SizeMB       int    `json:"size_mb"`
-	StorageClass string `json:"storage_class"`
-}
-
-// DeleteVolumeWorkflowInput は DeleteVolumeWorkflow の入力です。
-type DeleteVolumeWorkflowInput struct {
-	VolumeID  string `json:"volume_id"`
-	ProjectID string `json:"project_id"`
-	Namespace string `json:"namespace"`
-	PVCName   string `json:"pvc_name"`
-}
-
-// MountVolumeWorkflowInput は MountVolumeWorkflow の入力です。
-type MountVolumeWorkflowInput struct {
-	VolumeID    string `json:"volume_id"`
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
-	MountPath   string `json:"mount_path"`
-}
-
-// UnmountVolumeWorkflowInput は UnmountVolumeWorkflow の入力です。
-type UnmountVolumeWorkflowInput struct {
-	VolumeID    string `json:"volume_id"`
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
+// pvcResourceName は volumeID から PVC の k8s リソース名を生成します。
+func pvcResourceName(name string, volumeID uuid.UUID) string {
+	return fmt.Sprintf("%s-%s", name, volumeID.String()[:8])
 }
 
 type volumeService struct {
@@ -107,17 +77,25 @@ func (s *volumeService) Create(ctx context.Context, userID string, projectID uui
 		return "", "", fmt.Errorf("failed to create volume: %w", err)
 	}
 
+	pvcName := pvcResourceName(name, volumeID)
+	storageSizeStr := fmt.Sprintf("%dMi", sizeMB)
+
+	type createVolumeInput struct {
+		VolumeID    uuid.UUID `json:"VolumeID"`
+		Namespace   string    `json:"Namespace"`
+		PVCName     string    `json:"PVCName"`
+		StorageSize string    `json:"StorageSize"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("create-volume-%s", volumeID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateVolume, CreateVolumeWorkflowInput{
-		VolumeID:     volumeID.String(),
-		ProjectID:    projectID.String(),
-		Namespace:    project.Namespace,
-		Name:         name,
-		SizeMB:       sizeMB,
-		StorageClass: storageClass,
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateVolume, createVolumeInput{
+		VolumeID:    volumeID,
+		Namespace:   project.Namespace,
+		PVCName:     pvcName,
+		StorageSize: storageSizeStr,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to start CreateVolumeWorkflow: %w", err)
@@ -144,16 +122,20 @@ func (s *volumeService) Delete(ctx context.Context, userID string, projectID, vo
 		return "", fmt.Errorf("failed to delete volume: %w", err)
 	}
 
-	pvcName := fmt.Sprintf("%s-%s", volume.Name, volumeID.String()[:8])
+	type deleteVolumeInput struct {
+		VolumeID  uuid.UUID `json:"VolumeID"`
+		Namespace string    `json:"Namespace"`
+		PVCName   string    `json:"PVCName"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("delete-volume-%s-%d", volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteVolume, DeleteVolumeWorkflowInput{
-		VolumeID:  volumeID.String(),
-		ProjectID: projectID.String(),
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteVolume, deleteVolumeInput{
+		VolumeID:  volumeID,
 		Namespace: project.Namespace,
-		PVCName:   pvcName,
+		PVCName:   pvcResourceName(volume.Name, volumeID),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start DeleteVolumeWorkflow: %w", err)
@@ -181,15 +163,28 @@ func (s *volumeService) Mount(ctx context.Context, userID string, projectID, con
 		return "", fmt.Errorf("failed to create mount: %w", err)
 	}
 
+	volume, err := s.volumeRepo.FindByID(ctx, volumeID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "volume", ID: volumeID.String()}
+	}
+
+	type mountVolumeInput struct {
+		ContainerID uuid.UUID `json:"ContainerID"`
+		Namespace   string    `json:"Namespace"`
+		VolumeID    uuid.UUID `json:"VolumeID"`
+		PVCName     string    `json:"PVCName"`
+		MountPath   string    `json:"MountPath"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("mount-volume-%s-%s-%d", containerID.String(), volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowMountVolume, MountVolumeWorkflowInput{
-		VolumeID:    volumeID.String(),
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowMountVolume, mountVolumeInput{
+		ContainerID: containerID,
 		Namespace:   project.Namespace,
+		VolumeID:    volumeID,
+		PVCName:     pvcResourceName(volume.Name, volumeID),
 		MountPath:   mountPath,
 	})
 	if err != nil {
@@ -212,15 +207,27 @@ func (s *volumeService) Unmount(ctx context.Context, userID string, projectID, c
 		return "", fmt.Errorf("failed to delete mount: %w", err)
 	}
 
+	volume, err := s.volumeRepo.FindByID(ctx, volumeID)
+	if err != nil {
+		return "", &apperrors.NotFoundError{Resource: "volume", ID: volumeID.String()}
+	}
+
+	type unmountVolumeInput struct {
+		ContainerID uuid.UUID `json:"ContainerID"`
+		Namespace   string    `json:"Namespace"`
+		VolumeID    uuid.UUID `json:"VolumeID"`
+		PVCName     string    `json:"PVCName"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("unmount-volume-%s-%s-%d", containerID.String(), volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowUnmountVolume, UnmountVolumeWorkflowInput{
-		VolumeID:    volumeID.String(),
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowUnmountVolume, unmountVolumeInput{
+		ContainerID: containerID,
 		Namespace:   project.Namespace,
+		VolumeID:    volumeID,
+		PVCName:     pvcResourceName(volume.Name, volumeID),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start UnmountVolumeWorkflow: %w", err)

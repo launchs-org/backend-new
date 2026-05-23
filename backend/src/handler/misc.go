@@ -29,7 +29,11 @@ func (h *EnvVarHandler) ListProject(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, vars)
+	result := make([]map[string]interface{}, len(vars))
+	for i, v := range vars {
+		result[i] = map[string]interface{}{"id": v.ID.String(), "key": v.Key, "value": v.Value}
+	}
+	return response.OK(c, result)
 }
 
 func (h *EnvVarHandler) UpsertProject(c *echo.Context) error {
@@ -86,7 +90,11 @@ func (h *EnvVarHandler) ListContainer(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, vars)
+	result := make([]map[string]interface{}, len(vars))
+	for i, v := range vars {
+		result[i] = map[string]interface{}{"id": v.ID.String(), "key": v.Key, "value": v.Value}
+	}
+	return response.OK(c, result)
 }
 
 func (h *EnvVarHandler) UpsertContainer(c *echo.Context) error {
@@ -149,7 +157,15 @@ func (h *PortHandler) List(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, ports)
+	result := make([]map[string]interface{}, len(ports))
+	for i, p := range ports {
+		result[i] = map[string]interface{}{
+			"id":       p.ID.String(),
+			"port":     p.Port,
+			"protocol": p.Protocol,
+		}
+	}
+	return response.OK(c, result)
 }
 
 func (h *PortHandler) Create(c *echo.Context) error {
@@ -169,7 +185,11 @@ func (h *PortHandler) Create(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.Created(c, port)
+	return response.Created(c, map[string]interface{}{
+		"id":       port.ID.String(),
+		"port":     port.Port,
+		"protocol": port.Protocol,
+	})
 }
 
 func (h *PortHandler) Delete(c *echo.Context) error {
@@ -203,7 +223,18 @@ func (h *RouteHandler) List(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, routes)
+	result := make([]map[string]interface{}, len(routes))
+	for i, r := range routes {
+		result[i] = map[string]interface{}{
+			"id":         r.ID.String(),
+			"type":       r.Type,
+			"port":       r.Port,
+			"protocol":   r.Protocol,
+			"subdomain":  r.Subdomain,
+			"created_at": r.CreatedAt,
+		}
+	}
+	return response.OK(c, result)
 }
 
 func (h *RouteHandler) CreateService(c *echo.Context) error {
@@ -217,6 +248,9 @@ func (h *RouteHandler) CreateService(c *echo.Context) error {
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
+	}
+	if req.Protocol != "TCP" && req.Protocol != "UDP" {
+		return badRequest(c, "protocol must be TCP or UDP")
 	}
 
 	workflowID, err := h.svc.CreateService(c.Request().Context(), userID, projectID, containerID, req.Port, req.Protocol)
@@ -402,7 +436,22 @@ func (h *BuildJobHandler) List(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, jobs)
+	result := make([]map[string]interface{}, len(jobs))
+	for i, j := range jobs {
+		result[i] = map[string]interface{}{
+			"id":                   j.ID.String(),
+			"git_repo":             j.GitRepo,
+			"git_branch":           j.GitBranch,
+			"git_commit":           j.GitCommit,
+			"status":               j.Status,
+			"temporal_workflow_id": j.TemporalWorkflowID,
+			"started_at":           j.StartedAt,
+			"finished_at":          j.FinishedAt,
+			"image_id":             j.ImageID,
+			"created_at":           j.CreatedAt,
+		}
+	}
+	return response.OK(c, result)
 }
 
 func (h *BuildJobHandler) Cancel(c *echo.Context) error {
@@ -461,7 +510,15 @@ func (h *SnapshotHandler) List(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, snapshots)
+	result := make([]map[string]interface{}, len(snapshots))
+	for i, s := range snapshots {
+		result[i] = map[string]interface{}{
+			"id":          s.ID.String(),
+			"description": s.Description,
+			"created_at":  s.CreatedAt,
+		}
+	}
+	return response.OK(c, result)
 }
 
 func (h *SnapshotHandler) Get(c *echo.Context) error {
@@ -473,7 +530,11 @@ func (h *SnapshotHandler) Get(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, snapshot)
+	return response.OK(c, map[string]interface{}{
+		"id":          snapshot.ID.String(),
+		"description": snapshot.Description,
+		"created_at":  snapshot.CreatedAt,
+	})
 }
 
 func (h *SnapshotHandler) Restore(c *echo.Context) error {
@@ -506,7 +567,28 @@ func (h *VolumeHandler) List(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, volumes)
+	result := make([]map[string]interface{}, len(volumes))
+	for i, v := range volumes {
+		mounts := make([]map[string]interface{}, len(v.Mounts))
+		for j, m := range v.Mounts {
+			mounts[j] = map[string]interface{}{
+				"id":           m.ID.String(),
+				"volume_id":    m.VolumeID.String(),
+				"container_id": m.ContainerID.String(),
+				"mount_path":   m.MountPath,
+			}
+		}
+		result[i] = map[string]interface{}{
+			"id":            v.ID.String(),
+			"name":          v.Name,
+			"size_mb":       v.SizeMB,
+			"storage_class": v.StorageClass,
+			"status":        v.Status,
+			"mounts":        mounts,
+			"created_at":    v.CreatedAt,
+		}
+	}
+	return response.OK(c, result)
 }
 
 func (h *VolumeHandler) Create(c *echo.Context) error {

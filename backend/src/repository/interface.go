@@ -37,6 +37,7 @@ type ContainerRepository interface {
 	UpdateWebhookToken(ctx context.Context, id uuid.UUID, token *string) error
 	Update(ctx context.Context, container *model.Container) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteRelated(ctx context.Context, id uuid.UUID) error
 }
 
 // ContainerStatusHistoryRepository はステータス履歴の INSERT と古いレコードの削除を抽象化します。
@@ -51,6 +52,7 @@ type ContainerStatusHistoryRepository interface {
 type PodStatusRepository interface {
 	Upsert(ctx context.Context, pod *model.PodStatus) error
 	DeleteByPodName(ctx context.Context, podName string) error
+	DeleteByContainerID(ctx context.Context, containerID uuid.UUID) error
 	FindByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.PodStatus, error)
 }
 

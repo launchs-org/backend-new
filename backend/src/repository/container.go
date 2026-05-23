@@ -93,3 +93,23 @@ func (r *containerRepository) Update(ctx context.Context, container *model.Conta
 func (r *containerRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&model.Container{}, "id = ?", id).Error
 }
+
+// DeleteRelated はコンテナに紐づく全関連レコードを外部キー制約順に削除します。
+func (r *containerRepository) DeleteRelated(ctx context.Context, id uuid.UUID) error {
+	tables := []interface{}{
+		&model.PodStatus{},
+		&model.ContainerStatusHistory{},
+		&model.ContainerLog{},
+		&model.ContainerMetric{},
+		&model.NetworkRoute{},
+		&model.Port{},
+		&model.ContainerEnvVar{},
+		&model.VolumeMount{},
+	}
+	for _, m := range tables {
+		if err := r.db.WithContext(ctx).Where("container_id = ?", id).Delete(m).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}

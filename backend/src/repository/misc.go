@@ -63,6 +63,10 @@ func (r *podStatusRepository) DeleteByPodName(ctx context.Context, podName strin
 	return r.db.WithContext(ctx).Where("pod_name = ?", podName).Delete(&model.PodStatus{}).Error
 }
 
+func (r *podStatusRepository) DeleteByContainerID(ctx context.Context, containerID uuid.UUID) error {
+	return r.db.WithContext(ctx).Where("container_id = ?", containerID).Delete(&model.PodStatus{}).Error
+}
+
 func (r *podStatusRepository) FindByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.PodStatus, error) {
 	var pods []model.PodStatus
 	err := r.db.WithContext(ctx).Where("container_id = ?", containerID).Find(&pods).Error

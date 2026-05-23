@@ -13,33 +13,14 @@ import (
 	"backend/repository"
 )
 
-// CreateServiceWorkflowInput は CreateServiceWorkflow の入力です。
-type CreateServiceWorkflowInput struct {
-	RouteID     string `json:"route_id"`
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
-	Port        int    `json:"port"`
-	Protocol    string `json:"protocol"`
+// serviceResourceName は routeID から Service の k8s リソース名を生成します。
+func serviceResourceName(routeID uuid.UUID) string {
+	return fmt.Sprintf("svc-%s", routeID.String()[:8])
 }
 
-// CreateIngressWorkflowInput は CreateIngressWorkflow の入力です。
-type CreateIngressWorkflowInput struct {
-	RouteID     string `json:"route_id"`
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
-	Port        int    `json:"port"`
-	Subdomain   string `json:"subdomain"`
-}
-
-// DeleteRouteWorkflowInput はルート削除ワークフローの入力です。
-type DeleteRouteWorkflowInput struct {
-	RouteID     string `json:"route_id"`
-	RouteType   string `json:"route_type"`
-	ContainerID string `json:"container_id"`
-	ProjectID   string `json:"project_id"`
-	Namespace   string `json:"namespace"`
+// ingressResourceName は routeID から IngressRoute の k8s リソース名を生成します。
+func ingressResourceName(routeID uuid.UUID) string {
+	return fmt.Sprintf("ingress-%s", routeID.String()[:8])
 }
 
 type routeService struct {
@@ -92,17 +73,41 @@ func (s *routeService) CreateService(ctx context.Context, userID string, project
 		return "", fmt.Errorf("failed to create route: %w", err)
 	}
 
+	svcName := serviceResourceName(routeID)
+
+	type serviceSpec struct {
+		Namespace      string `json:"Namespace"`
+		Name           string `json:"Name"`
+		Ports          []struct {
+			Port     int    `json:"Port"`
+			Protocol string `json:"Protocol"`
+		} `json:"Ports"`
+		SelectorLabels map[string]string `json:"SelectorLabels"`
+	}
+	type createServiceInput struct {
+		ContainerID uuid.UUID   `json:"ContainerID"`
+		ServiceSpec serviceSpec `json:"ServiceSpec"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("create-service-%s", routeID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateService, CreateServiceWorkflowInput{
-		RouteID:     routeID.String(),
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
-		Namespace:   project.Namespace,
-		Port:        port,
-		Protocol:    protocol,
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateService, createServiceInput{
+		ContainerID: containerID,
+		ServiceSpec: serviceSpec{
+			Namespace: project.Namespace,
+			Name:      svcName,
+			Ports: []struct {
+				Port     int    `json:"Port"`
+				Protocol string `json:"Protocol"`
+			}{
+				{Port: port, Protocol: protocol},
+			},
+			SelectorLabels: map[string]string{
+				"container-id": containerID.String(),
+			},
+		},
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start CreateServiceWorkflow: %w", err)
@@ -140,17 +145,50 @@ func (s *routeService) CreateIngress(ctx context.Context, userID string, project
 		return "", "", "", fmt.Errorf("failed to create route: %w", err)
 	}
 
+	// 対象ポートに対応する Service ルートを検索してService名を解決する
+	existingRoutes, err := s.routeRepo.FindByContainerID(ctx, containerID)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to list routes: %w", err)
+	}
+	svcRouteID := uuid.UUID{}
+	for _, r := range existingRoutes {
+		if r.Type == string(model.NetworkRouteTypeService) && r.Port == port {
+			svcRouteID = r.ID
+			break
+		}
+	}
+	if svcRouteID == (uuid.UUID{}) {
+		return "", "", "", fmt.Errorf("port %d に対応する Service が見つかりません。先に Service を作成してください", port)
+	}
+
+	ingressName := ingressResourceName(routeID)
+	svcName := serviceResourceName(svcRouteID)
+
+	type ingressSpec struct {
+		Namespace   string `json:"Namespace"`
+		Name        string `json:"Name"`
+		ServiceName string `json:"ServiceName"`
+		Host        string `json:"Host"`
+		Port        int    `json:"Port"`
+	}
+	type createIngressInput struct {
+		ContainerID uuid.UUID   `json:"ContainerID"`
+		IngressSpec ingressSpec `json:"IngressSpec"`
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("create-ingress-%s", routeID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateIngress, CreateIngressWorkflowInput{
-		RouteID:     routeID.String(),
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
-		Namespace:   project.Namespace,
-		Port:        port,
-		Subdomain:   subdomain,
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateIngress, createIngressInput{
+		ContainerID: containerID,
+		IngressSpec: ingressSpec{
+			Namespace:   project.Namespace,
+			Name:        ingressName,
+			ServiceName: svcName,
+			Host:        subdomain,
+			Port:        port,
+		},
 	})
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to start CreateIngressWorkflow: %w", err)
@@ -177,23 +215,35 @@ func (s *routeService) Delete(ctx context.Context, userID string, projectID, con
 		return "", fmt.Errorf("failed to delete route: %w", err)
 	}
 
-	// ルート種別に応じてワークフローを切り替えます
-	wfName := temporal.WorkflowDeleteService
-	if route.Type == string(model.NetworkRouteTypeIngress) {
-		wfName = temporal.WorkflowDeleteIngress
-	}
-
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("delete-route-%s-%d", routeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, wfName, DeleteRouteWorkflowInput{
-		RouteID:     routeID.String(),
-		RouteType:   route.Type,
-		ContainerID: containerID.String(),
-		ProjectID:   projectID.String(),
-		Namespace:   project.Namespace,
-	})
+
+	var we client.WorkflowRun
+	if route.Type == string(model.NetworkRouteTypeIngress) {
+		type deleteIngressInput struct {
+			ContainerID uuid.UUID `json:"ContainerID"`
+			Namespace   string    `json:"Namespace"`
+			IngressName string    `json:"IngressName"`
+		}
+		we, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteIngress, deleteIngressInput{
+			ContainerID: containerID,
+			Namespace:   project.Namespace,
+			IngressName: ingressResourceName(routeID),
+		})
+	} else {
+		type deleteServiceInput struct {
+			ContainerID uuid.UUID `json:"ContainerID"`
+			Namespace   string    `json:"Namespace"`
+			ServiceName string    `json:"ServiceName"`
+		}
+		we, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteService, deleteServiceInput{
+			ContainerID: containerID,
+			Namespace:   project.Namespace,
+			ServiceName: serviceResourceName(routeID),
+		})
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to start delete route workflow: %w", err)
 	}
