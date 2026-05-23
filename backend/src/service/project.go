@@ -39,6 +39,7 @@ type DeployProjectInput struct {
 type projectService struct {
 	projectRepo   repository.ProjectRepository
 	containerRepo repository.ContainerRepository
+	buildJobRepo  repository.BuildJobRepository
 	snapshotRepo  repository.SnapshotRepository
 	temporal      client.Client
 }
@@ -47,12 +48,14 @@ type projectService struct {
 func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	containerRepo repository.ContainerRepository,
+	buildJobRepo repository.BuildJobRepository,
 	snapshotRepo repository.SnapshotRepository,
 	temporalClient client.Client,
 ) ProjectService {
 	return &projectService{
 		projectRepo:   projectRepo,
 		containerRepo: containerRepo,
+		buildJobRepo:  buildJobRepo,
 		snapshotRepo:  snapshotRepo,
 		temporal:      temporalClient,
 	}
@@ -113,6 +116,23 @@ func (s *projectService) Delete(ctx context.Context, userID string, id uuid.UUID
 	}
 	if project.UserID != userID {
 		return "", &apperrors.ForbiddenError{Message: "access denied"}
+	}
+
+	// プロジェクト内の全コンテナ・関連レコードを外部キー制約順に削除
+	containers, err := s.containerRepo.FindByProjectID(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("failed to list containers: %w", err)
+	}
+	for _, c := range containers {
+		if err := s.buildJobRepo.DeleteByContainerID(ctx, c.ID); err != nil {
+			return "", fmt.Errorf("failed to delete build jobs for container %s: %w", c.ID, err)
+		}
+		if err := s.containerRepo.DeleteRelated(ctx, c.ID); err != nil {
+			return "", fmt.Errorf("failed to delete related records for container %s: %w", c.ID, err)
+		}
+		if err := s.containerRepo.Delete(ctx, c.ID); err != nil {
+			return "", fmt.Errorf("failed to delete container %s: %w", c.ID, err)
+		}
 	}
 
 	if err := s.projectRepo.Delete(ctx, id); err != nil {

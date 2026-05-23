@@ -64,7 +64,7 @@ func main() {
 	connectionRepo := repository.NewServiceConnectionRepository(db)
 
 	// Service 初期化（DI）
-	projectSvc := service.NewProjectService(projectRepo, containerRepo, snapshotRepo, temporalClient)
+	projectSvc := service.NewProjectService(projectRepo, containerRepo, buildJobRepo, snapshotRepo, temporalClient)
 	templateSvc := service.NewTemplateService(templateDir)
 	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, templateSvc, temporalClient)
 	envVarSvc := service.NewEnvVarService(projectRepo, containerRepo, envVarRepo)
