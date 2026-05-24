@@ -8,8 +8,8 @@ import (
 // コンテナデプロイ時にコンテナ固有の環境変数とマージされます（コンテナ優先）。
 type ProjectEnvVar struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	ProjectID uuid.UUID `gorm:"type:uuid;not null;index"`
-	Key       string    `gorm:"not null"`
+	ProjectID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_project_env_var_project_key"`
+	Key       string    `gorm:"not null;uniqueIndex:idx_project_env_var_project_key"`
 	Value     string    `gorm:"not null"`
 }
 
@@ -17,7 +17,7 @@ type ProjectEnvVar struct {
 // 同名のキーがある場合、ProjectEnvVar より優先されます。
 type ContainerEnvVar struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
-	ContainerID uuid.UUID `gorm:"type:uuid;not null;index"`
-	Key         string    `gorm:"not null"`
+	ContainerID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_container_env_var_container_key"`
+	Key         string    `gorm:"not null;uniqueIndex:idx_container_env_var_container_key"`
 	Value       string    `gorm:"not null"`
 }

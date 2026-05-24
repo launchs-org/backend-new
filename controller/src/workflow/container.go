@@ -6,6 +6,7 @@ import (
 	"controller/activity"
 
 	"launchs/shared/config"
+	"launchs/shared/model"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -14,19 +15,23 @@ import (
 // DeployWorkflow はコンテナを Kubernetes にデプロイします。
 // ステータスを deploying → running と更新し、Deployment を Apply します。
 func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
+	// アクティビティのオプション
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 3,
 		},
 	}
+
+	// アクティビティのオプションを適用
 	ctx = workflow.WithActivityOptions(ctx, ao)
 
+	// アクティビティ
 	dbAct := &activity.DBActivity{}
 	deployAct := &activity.DeploymentActivity{}
 
 	// 1. ステータスを deploying に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "deploying").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, model.ContainerStatusDeploying).Get(ctx, nil); err != nil {
 		return err
 	}
 
@@ -36,6 +41,8 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 	cpuLim := input.CPULimit
 	memReq := input.MemoryRequest
 	memLim := input.MemoryLimit
+
+	// リソースサイズに対応した CPU/Memory 設定を取得
 	if cpuReq == "" || cpuLim == "" || memReq == "" || memLim == "" {
 		sizes := config.ResourceSizes()
 		size, ok := sizes[input.ResourceSize]
@@ -56,6 +63,7 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 		}
 	}
 
+	// DeploymentSpec を作成
 	spec := activity.DeploymentSpec{
 		Namespace:     input.Namespace,
 		Name:          input.DeploymentName,
@@ -81,7 +89,7 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 	}
 
 	// 3. ステータスを running に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, model.ContainerStatusRunning).Get(ctx, nil); err != nil {
 		return err
 	}
 

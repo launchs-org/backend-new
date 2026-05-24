@@ -23,7 +23,7 @@ type Volume struct {
 	Name         string    `gorm:"not null"`
 	SizeMB       int       `gorm:"not null"`
 	StorageClass string    `gorm:"not null;default:'standard'"`
-	Status       string    `gorm:"not null;default:'pending'"`
+	Status       VolumeStatus    `gorm:"not null;default:'pending'"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 

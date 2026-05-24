@@ -183,3 +183,14 @@ func (a *DBActivity) DBUpdateProjectStatus(ctx context.Context, projectID string
 	}
 	return nil
 }
+
+// ボリュームのステータスを更新する関数
+func (a *DBActivity) DBUpdateVolumeStatus(ctx context.Context, volumeID uuid.UUID, status string) error {
+	result := database.DB.WithContext(ctx).Model(&model.Volume{}).
+		Where("id = ?", volumeID).
+		Update("status", status)
+	if result.Error != nil {
+		return fmt.Errorf("ボリュームステータス更新エラー: %w", result.Error)
+	}
+	return nil
+}

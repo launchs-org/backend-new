@@ -72,7 +72,7 @@ func (s *volumeService) Create(ctx context.Context, userID string, projectID uui
 		Name:         name,
 		SizeMB:       sizeMB,
 		StorageClass: storageClass,
-		Status:       string(model.VolumeStatusPending),
+		Status:       model.VolumeStatusPending,
 	}
 	if err := s.volumeRepo.Create(ctx, volume); err != nil {
 		return "", "", fmt.Errorf("failed to create volume: %w", err)

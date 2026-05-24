@@ -77,6 +77,8 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, containerID, "building").Get(ctx, nil); err != nil {
 		return err
 	}
+
+	// ジョブのステータスを running に更新
 	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateBuildJobStatus, buildJobID, "running", "").Get(ctx, nil); err != nil {
 		return err
 	}
@@ -136,6 +138,7 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 		size = sizes["small"]
 	}
 
+	// Controller への入力を生成
 	deployInput := buildDeployControllerInput{
 		ContainerID:    containerID,
 		Namespace:      input.Namespace,
@@ -152,6 +155,7 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 		VolumeMounts:   input.VolumeMounts,
 	}
 
+	// 子ワークフローを起動
 	cwo := workflow.ChildWorkflowOptions{
 		WorkflowID:         fmt.Sprintf("%s-%s", launchs_temporal.WorkflowDeploy, input.ContainerID),
 		TaskQueue:          launchs_temporal.ControllerQueue,

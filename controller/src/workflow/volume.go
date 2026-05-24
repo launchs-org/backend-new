@@ -20,6 +20,7 @@ func CreateVolumeWorkflow(ctx workflow.Context, input CreateVolumeInput) error {
 	ctx = workflow.WithActivityOptions(ctx, ao)
 
 	pvcAct := &activity.PVCActivity{}
+	dbAct := &activity.DBActivity{}
 
 	spec := activity.PVCSpec{
 		Namespace:   input.Namespace,
@@ -27,7 +28,16 @@ func CreateVolumeWorkflow(ctx workflow.Context, input CreateVolumeInput) error {
 		StorageSize: input.StorageSize,
 	}
 
-	return workflow.ExecuteActivity(ctx, pvcAct.PVCCreate, spec).Get(ctx, nil)
+	// 実際にPVCを作成
+	err := workflow.ExecuteActivity(ctx, pvcAct.PVCCreate, spec).Get(ctx, nil)
+
+	// エラー処理
+	if err != nil {
+		return err
+	}
+
+	// ボリュームを作成済みに更新
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateVolumeStatus,input.VolumeID, "created").Get(ctx, nil)
 }
 
 // DeleteVolumeWorkflow は PVC を削除します。
