@@ -12,6 +12,11 @@ type projectRepository struct {
 	db *gorm.DB
 }
 
+// UpdateStatus implements [ProjectRepository].
+func (r *projectRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	return r.db.WithContext(ctx).Model(&model.Project{}).Where("id = ?", id).Update("status", status).Error
+}
+
 // NewProjectRepository は ProjectRepository の実装を返します。
 func NewProjectRepository(db *gorm.DB) ProjectRepository {
 	return &projectRepository{db: db}

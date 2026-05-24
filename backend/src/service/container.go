@@ -1,6 +1,7 @@
 package service
 
 import (
+	"backend/repository"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -8,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"go.temporal.io/sdk/client"
 	"launchs/shared/model"
 	"launchs/shared/temporal"
+
+	"github.com/google/uuid"
+	"go.temporal.io/sdk/client"
+
 	apperrors "launchs/shared/errors"
-	"backend/repository"
 )
 
 // ---- Temporal ワークフロー入力型 ----
@@ -145,45 +147,35 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
-	// Harbor 情報がまだない場合は CreateProjectWorkflow の完了を待ちます。
-	// プロジェクト作成直後にデプロイした場合、ワークフローがまだ実行中の可能性があります。
+	// Harbor 情報がまだない場合は エラーを返す
 	if project.HarborRobotUsername == "" {
-		createWorkflowID := fmt.Sprintf("create-project-%s", projectID.String())
-		fmt.Printf("[INFO] Harbor 未設定、CreateProjectWorkflow 完了待ち: workflowID=%s\n", createWorkflowID)
-		we := s.temporal.GetWorkflow(ctx, createWorkflowID, "")
-		if waitErr := we.Get(ctx, nil); waitErr != nil {
-			fmt.Printf("[ERROR] CreateProjectWorkflow 失敗: workflowID=%s err=%v\n", createWorkflowID, waitErr)
-			return nil, "", fmt.Errorf("Harbor 初期化エラー: %w", waitErr)
-		}
-		// ワークフロー完了後に Harbor 情報を再取得
-		project, err = s.projectRepo.FindByID(ctx, projectID)
-		if err != nil {
-			return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
-		}
-		if project.HarborRobotUsername == "" {
-			fmt.Printf("[ERROR] CreateProjectWorkflow 完了後も Harbor 情報が空: projectID=%s\n", projectID.String())
-			return nil, "", fmt.Errorf("Harbor 初期化失敗: CreateProjectWorkflow は完了しましたが Harbor 認証情報が保存されていません")
-		}
-		fmt.Printf("[INFO] Harbor 情報取得完了: projectID=%s username=%s\n", projectID.String(), project.HarborRobotUsername)
+		return nil, "", fmt.Errorf("harbor robot username is empty")
 	}
 
+	// コンテナを作成します
 	containerID := uuid.New()
+
+	// リソースサイズを決めます
 	resourceSize := req.ResourceSize
 	if resourceSize == "" {
 		resourceSize = "small"
 	}
+
+	// リプリカ数を決めます
 	replicas := req.Replicas
 	if replicas <= 0 {
 		replicas = 1
 	}
 
+	// Git リポジトリを正規化します
 	gitRepo := normalizeGitRepo(req.GitRepo)
 
+	// コンテナを作成します
 	container := &model.Container{
 		ID:           containerID,
 		ProjectID:    projectID,
 		Name:         req.Name,
-		Status:       string(model.ContainerStatusPending),
+		Status:       model.ContainerStatusPending,
 		Replicas:     replicas,
 		ResourceSize: resourceSize,
 		GitRepo:      &gitRepo,
@@ -299,7 +291,7 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		ID:           containerID,
 		ProjectID:    projectID,
 		Name:         req.Name,
-		Status:       string(model.ContainerStatusPending),
+		Status:       model.ContainerStatusPending,
 		Replicas:     1,
 		ResourceSize: resourceSize,
 	}

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"launchs/shared/model"
 	"time"
 
 	"controller/activity"
@@ -54,6 +55,11 @@ func CreateProjectWorkflow(ctx workflow.Context, input CreateProjectInput) (*Har
 		return nil, err
 	}
 
+	// 5 DBを更新して作成済みにする
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateProjectStatus, projectID, model.ProjectStatusActive).Get(ctx, nil); err != nil {
+		return nil, err
+	}	
+
 	return &HarborCredentials{
 		ProjectName: input.Namespace,
 		Username:    robotResult.Username,
@@ -74,6 +80,7 @@ func DeleteProjectWorkflow(ctx workflow.Context, input DeleteProjectInput) error
 
 	harborAct := &activity.HarborActivity{}
 	nsAct := &activity.NamespaceActivity{}
+	dbAct := activity.DBActivity{}
 
 	// 1. Harbor プロジェクトを削除（イメージもまとめて削除）
 	if err := workflow.ExecuteActivity(ctx, harborAct.HarborDeleteProject, input.Namespace).Get(ctx, nil); err != nil {
@@ -82,6 +89,11 @@ func DeleteProjectWorkflow(ctx workflow.Context, input DeleteProjectInput) error
 
 	// 2. Namespace を削除（配下の全リソースが削除される）
 	if err := workflow.ExecuteActivity(ctx, nsAct.NamespaceDelete, input.Namespace).Get(ctx, nil); err != nil {
+		return err
+	}
+
+	// 全てを削除し終えた場合にDBからも削除
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBDeleteProject, input.ProjectID).Get(ctx, nil); err != nil {
 		return err
 	}
 

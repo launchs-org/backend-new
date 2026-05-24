@@ -170,7 +170,7 @@ func (c *LogCollector) flush(ctx context.Context) {
 	c.buffer = c.buffer[:0]
 	c.mu.Unlock()
 
-	if err := database.DB.WithContext(ctx).CreateInBatches(logs, 500).Error; err != nil {
+	if err := database.DB.WithContext(ctx).CreateInBatches(logs, 30).Error; err != nil {
 		fmt.Printf("[log-collector] ログ保存エラー: %v\n", err)
 	}
 }

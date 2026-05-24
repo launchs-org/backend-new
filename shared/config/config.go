@@ -88,7 +88,7 @@ func WorkflowQueueMax() int {
 
 // LogFlushIntervalSec はログバッファフラッシュ間隔（秒）を返します。
 func LogFlushIntervalSec() int {
-	return getEnvInt("LOG_FLUSH_INTERVAL_SEC", 3)
+	return getEnvInt("LOG_FLUSH_INTERVAL_SEC", 1)
 }
 
 // MetricsIntervalSec はメトリクス収集間隔（秒）を返します。

@@ -20,6 +20,9 @@ type ProjectRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	// LastDeployedAt はプロジェクト内の最終デプロイ日時を返します（コンテナ数も含む）。
 	CountContainers(ctx context.Context, projectID uuid.UUID) (int64, error)
+
+	// ステータスを更新する
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 }
 
 // ContainerRepository はコンテナの CRUD・ステータス更新を抽象化します。

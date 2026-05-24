@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
+	apperrors "launchs/shared/errors"
+	"launchs/shared/model"
+	"backend/repository"
+	"launchs/shared/temporal"
+
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
-	"launchs/shared/model"
-	"launchs/shared/temporal"
-	apperrors "launchs/shared/errors"
-	"backend/repository"
 )
 
 // ---- Temporal ワークフロー入力型 ----
@@ -72,6 +73,7 @@ func (s *projectService) Create(ctx context.Context, userID, name string) (*mode
 		Name:      name,
 		Slug:      slug,
 		Namespace: namespace,
+		Status:    model.ProjectStatusPending,
 	}
 
 	if err := s.projectRepo.Create(ctx, project); err != nil {
@@ -118,27 +120,19 @@ func (s *projectService) Delete(ctx context.Context, userID string, id uuid.UUID
 		return "", &apperrors.ForbiddenError{Message: "access denied"}
 	}
 
-	// プロジェクト内の全コンテナ・関連レコードを外部キー制約順に削除
-	containers, err := s.containerRepo.FindByProjectID(ctx, id)
+	// すでに削除中ならエラー
+	if project.Status == "deleting" {
+		return "", &apperrors.ConflictError{Resource: "project", ID: id.String()}
+	}
+
+	// プロジェクトを削除中にする
+	err = s.projectRepo.UpdateStatus(ctx,id, "deleting")
+
+	// エラー処理
 	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %w", err)
+		return "", fmt.Errorf("failed to update project status: %w", err)
 	}
-	for _, c := range containers {
-		if err := s.buildJobRepo.DeleteByContainerID(ctx, c.ID); err != nil {
-			return "", fmt.Errorf("failed to delete build jobs for container %s: %w", c.ID, err)
-		}
-		if err := s.containerRepo.DeleteRelated(ctx, c.ID); err != nil {
-			return "", fmt.Errorf("failed to delete related records for container %s: %w", c.ID, err)
-		}
-		if err := s.containerRepo.Delete(ctx, c.ID); err != nil {
-			return "", fmt.Errorf("failed to delete container %s: %w", c.ID, err)
-		}
-	}
-
-	if err := s.projectRepo.Delete(ctx, id); err != nil {
-		return "", fmt.Errorf("failed to delete project: %w", err)
-	}
-
+	
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("delete-project-%s-%d", id.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,

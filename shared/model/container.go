@@ -26,7 +26,7 @@ type Container struct {
 	ID           uuid.UUID `gorm:"type:uuid;primaryKey"`
 	ProjectID    uuid.UUID `gorm:"type:uuid;not null;index"`
 	Name         string    `gorm:"not null"`
-	Status       string    `gorm:"not null;default:'pending'"`
+	Status       ContainerStatus    `gorm:"not null;default:'pending'"`
 	Replicas     int       `gorm:"not null;default:1"`
 	ReadyReplicas  int     `gorm:"not null;default:0"`
 	FailedReplicas int     `gorm:"not null;default:0"`

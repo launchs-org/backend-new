@@ -163,3 +163,23 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 		},
 	}, nil
 }
+
+// プロジェクトを削除するアクティビティ
+func (a *DBActivity) DBDeleteProject(ctx context.Context, projectID string) error {
+	result := database.DB.WithContext(ctx).Delete(&model.Project{}, "id = ?", projectID)
+	if result.Error != nil {
+		return fmt.Errorf("プロジェクト削除エラー: %w", result.Error)
+	}
+	return nil
+}
+
+// プロジェクトの状態を更新するアクティビティ
+func (a *DBActivity) DBUpdateProjectStatus(ctx context.Context, projectID string, status string) error {
+	result := database.DB.WithContext(ctx).Model(&model.Project{}).
+		Where("id = ?", projectID).
+		Update("status", status)
+	if result.Error != nil {
+		return fmt.Errorf("プロジェクト状態更新エラー: %w", result.Error)
+	}
+	return nil
+}
