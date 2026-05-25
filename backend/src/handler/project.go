@@ -8,6 +8,8 @@ import (
 	"backend/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"launchs/shared/database"
+	"launchs/shared/model"
 )
 
 // ProjectHandler はプロジェクト関連のリクエストを処理します。
@@ -31,19 +33,37 @@ func (h *ProjectHandler) List(c *echo.Context) error {
 		Name           string     `json:"name"`
 		Slug           string     `json:"slug"`
 		Namespace      string     `json:"namespace"`
+		Status         string     `json:"status"`
 		ContainerCount int64      `json:"container_count"`
 		LastDeployedAt *time.Time `json:"last_deployed_at"`
 		CreatedAt      time.Time  `json:"created_at"`
 	}
 
+	db := database.DB.WithContext(c.Request().Context())
+
 	items := make([]projectItem, len(projects))
 	for i, p := range projects {
+		var containerCount int64
+		db.Model(&model.Container{}).Where("project_id = ?", p.ID).Count(&containerCount)
+
+		var lastDeployed *time.Time
+		var latestContainer model.Container
+		if err := db.Where("project_id = ? AND status NOT IN ?", p.ID,
+			[]string{"pending", "building"},
+		).Order("updated_at DESC").First(&latestContainer).Error; err == nil {
+			t := latestContainer.UpdatedAt
+			lastDeployed = &t
+		}
+
 		items[i] = projectItem{
-			ID:        p.ID.String(),
-			Name:      p.Name,
-			Slug:      p.Slug,
-			Namespace: p.Namespace,
-			CreatedAt: p.CreatedAt,
+			ID:             p.ID.String(),
+			Name:           p.Name,
+			Slug:           p.Slug,
+			Namespace:      p.Namespace,
+			Status:         string(p.Status),
+			ContainerCount: containerCount,
+			LastDeployedAt: lastDeployed,
+			CreatedAt:      p.CreatedAt,
 		}
 	}
 	return response.OK(c, items)
@@ -65,12 +85,15 @@ func (h *ProjectHandler) Create(c *echo.Context) error {
 	}
 
 	return response.Created(c, map[string]interface{}{
-		"id":          project.ID.String(),
-		"name":        project.Name,
-		"slug":        project.Slug,
-		"namespace":   project.Namespace,
-		"workflow_id": workflowID,
-		"created_at":  project.CreatedAt,
+		"id":             project.ID.String(),
+		"name":           project.Name,
+		"slug":           project.Slug,
+		"namespace":      project.Namespace,
+		"status":         string(project.Status),
+		"container_count": 0,
+		"last_deployed_at": nil,
+		"workflow_id":    workflowID,
+		"created_at":     project.CreatedAt,
 	})
 }
 
