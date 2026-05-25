@@ -437,6 +437,18 @@ func (s *containerService) Rebuild(ctx context.Context, projectID, containerID u
 		return "", fmt.Errorf("container is not a GitHub deploy container")
 	}
 
+	if err := s.cancelTimedOutBuildJobs(ctx, containerID); err != nil {
+		return "", fmt.Errorf("failed to cancel timed-out build jobs: %w", err)
+	}
+
+	activeJobs, err := s.buildJobRepo.FindActiveByContainerID(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("failed to check active build jobs: %w", err)
+	}
+	if len(activeJobs) > 0 {
+		return "", &apperrors.ConflictError{Resource: "build job", ID: containerID.String()}
+	}
+
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
@@ -607,6 +619,37 @@ func generateToken(n int) (string, error) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+const buildJobTimeout = 10 * time.Minute
+
+// cancelTimedOutBuildJobs は pending/running 状態で開始から 10 分以上経過したビルドジョブを
+// Temporal ワークフローごとキャンセルして failed にします。
+func (s *containerService) cancelTimedOutBuildJobs(ctx context.Context, containerID uuid.UUID) error {
+	jobs, err := s.buildJobRepo.FindActiveByContainerID(ctx, containerID)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, job := range jobs {
+		var since time.Duration
+		if job.StartedAt != nil {
+			since = now.Sub(*job.StartedAt)
+		} else {
+			since = now.Sub(job.CreatedAt)
+		}
+		if since < buildJobTimeout {
+			continue
+		}
+		if job.TemporalWorkflowID != nil {
+			// エラーは無視：ワークフローが既に終了していても DB を failed に更新する
+			_ = s.temporal.CancelWorkflow(ctx, *job.TemporalWorkflowID, "")
+		}
+		if err := s.buildJobRepo.UpdateStatus(ctx, job.ID, string(model.BuildJobStatusFailed)); err != nil {
+			return fmt.Errorf("failed to mark timed-out build job as failed: %w", err)
+		}
+	}
+	return nil
 }
 
 // normalizeGitRepo は "owner/repo" または GitHub URL を "https://github.com/owner/repo" に正規化します。

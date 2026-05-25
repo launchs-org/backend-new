@@ -82,6 +82,7 @@ type BuildJobRepository interface {
 	Create(ctx context.Context, job *model.BuildJob) error
 	FindByID(ctx context.Context, id uuid.UUID) (*model.BuildJob, error)
 	FindByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.BuildJob, error)
+	FindActiveByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.BuildJob, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	UpdateWorkflowID(ctx context.Context, id uuid.UUID, workflowID string) error
 	UpdateFinishedAt(ctx context.Context, id uuid.UUID) error

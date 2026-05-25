@@ -38,6 +38,17 @@ func (r *buildJobRepository) FindByContainerID(ctx context.Context, containerID 
 	return jobs, err
 }
 
+func (r *buildJobRepository) FindActiveByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.BuildJob, error) {
+	var jobs []model.BuildJob
+	err := r.db.WithContext(ctx).Model(&model.BuildJob{}).
+		Where("container_id = ? AND status IN ?", containerID, []string{
+			string(model.BuildJobStatusPending),
+			string(model.BuildJobStatusRunning),
+		}).
+		Find(&jobs).Error
+	return jobs, err
+}
+
 func (r *buildJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
 	return r.db.WithContext(ctx).Model(&model.BuildJob{}).Where("id = ?", id).Update("status", status).Error
 }
