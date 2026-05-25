@@ -3,14 +3,12 @@ package activity
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"launchs/shared/config"
 	"launchs/shared/database"
 	"launchs/shared/model"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm/clause"
 )
 
 // DBActivity はコントローラーが行う DB 更新操作を担当します。
@@ -206,27 +204,75 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 
 // プロジェクトを削除するアクティビティ
 func (a *DBActivity) DBDeleteProject(ctx context.Context, projectID string) error {
-	// deletingかどうか判定する
-	var project model.Project
-	result := database.DB.WithContext(ctx).First(&project, "id = ?", projectID)
-	if result.Error != nil {
-		return fmt.Errorf("プロジェクト取得エラー: %w", result.Error)
+	db := database.DB.WithContext(ctx)
+
+	// プロジェクト配下のコンテナ ID を取得
+	var containerIDs []uuid.UUID
+	if err := db.Model(&model.Container{}).
+		Where("project_id = ?", projectID).
+		Pluck("id", &containerIDs).Error; err != nil {
+		return fmt.Errorf("コンテナID取得エラー: %w", err)
 	}
 
-	defer func() {
-		// 失敗したとき Failed にする
-		if err := a.DBUpdateProjectStatus(ctx, projectID, string(model.ProjectStatusFailed)); err != nil {
-			log.Fatalf("プロジェクト状態更新エラー: %s", err.Error())
+	if len(containerIDs) > 0 {
+		// コンテナに紐づく全子テーブルを削除
+		tables := []interface{}{
+			&model.ContainerLog{},
+			&model.ContainerMetric{},
+			&model.Deployment{},
+			&model.Image{},
+			&model.PodStatus{},
+			&model.ContainerStatusHistory{},
+			&model.BuildJob{},
+			&model.ContainerEnvVar{},
+			&model.ContainerSelectedProjectEnvVar{},
+			&model.Port{},
+			&model.NetworkRoute{},
 		}
-	}()
+		for _, table := range tables {
+			if err := db.Where("container_id IN ?", containerIDs).Delete(table).Error; err != nil {
+				return fmt.Errorf("コンテナ関連データ削除エラー (%T): %w", table, err)
+			}
+		}
+		// コンテナ本体を削除
+		if err := db.Where("id IN ?", containerIDs).Delete(&model.Container{}).Error; err != nil {
+			return fmt.Errorf("コンテナ削除エラー: %w", err)
+		}
+	}
 
-    result = database.DB.WithContext(ctx).
-        Select(clause.Associations).
-        Delete(&model.Project{}, "id = ?", projectID)
-    if result.Error != nil {
-        return fmt.Errorf("プロジェクト削除エラー: %w", result.Error)
-    }
-    return nil
+	// ボリューム配下のマウントを削除してからボリュームを削除
+	var volumeIDs []uuid.UUID
+	if err := db.Model(&model.Volume{}).
+		Where("project_id = ?", projectID).
+		Pluck("id", &volumeIDs).Error; err != nil {
+		return fmt.Errorf("ボリュームID取得エラー: %w", err)
+	}
+	if len(volumeIDs) > 0 {
+		if err := db.Where("volume_id IN ?", volumeIDs).Delete(&model.VolumeMount{}).Error; err != nil {
+			return fmt.Errorf("ボリュームマウント削除エラー: %w", err)
+		}
+		if err := db.Where("id IN ?", volumeIDs).Delete(&model.Volume{}).Error; err != nil {
+			return fmt.Errorf("ボリューム削除エラー: %w", err)
+		}
+	}
+
+	// プロジェクト直属のリソースを削除
+	for _, v := range []interface{}{
+		&model.ProjectEnvVar{},
+		&model.Snapshot{},
+		&model.ServiceConnection{},
+	} {
+		if err := db.Where("project_id = ?", projectID).Delete(v).Error; err != nil {
+			return fmt.Errorf("プロジェクト関連データ削除エラー (%T): %w", v, err)
+		}
+	}
+
+	// プロジェクト本体を削除
+	if err := db.Where("id = ?", projectID).Delete(&model.Project{}).Error; err != nil {
+		return fmt.Errorf("プロジェクト削除エラー: %w", err)
+	}
+
+	return nil
 }
 
 // プロジェクトの状態を更新するアクティビティ
