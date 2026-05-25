@@ -12,7 +12,7 @@ services:
     container_name: temporal-admin-tools
     restart: on-failure:6
     environment:
-      - DB=postgres12
+      - DB=db
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
@@ -32,17 +32,12 @@ services:
     image: temporalio/server:1.31.0
     container_name: temporal
     environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=temporal
-      - POSTGRES_PWD=temporal
-      - POSTGRES_SEEDS=postgres
+      - TEMPORAL_SERVER_CONFIG_FILE_PATH=/etc/temporal/config/development.yaml
       - BIND_ON_IP=0.0.0.0
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     ports:
       - "7233:7233"
     volumes:
-      - ./temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+      - ./temporal/config:/etc/temporal/config
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "7233"]
       interval: 5s

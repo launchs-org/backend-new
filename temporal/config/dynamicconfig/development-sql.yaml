@@ -1,0 +1,14 @@
+# Temporal ダイナミック設定（PostgreSQL 開発環境用）
+# 参考: https://github.com/temporalio/temporal/tree/main/config/dynamicconfig
+
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
+
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+
+frontend.enableClientVersionCheck:
+  - value: false
+    constraints: {}
