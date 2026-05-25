@@ -88,8 +88,8 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 		return err
 	}
 
-	// 3. ステータスを running に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, model.ContainerStatusRunning).Get(ctx, nil); err != nil {
+	// 3. ステータスを applying に変更（Pod が Ready になるまで Watcher が監視）
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, model.ContainerStatusApplying).Get(ctx, nil); err != nil {
 		return err
 	}
 
@@ -98,7 +98,7 @@ func DeployWorkflow(ctx workflow.Context, input DeployInput) error {
 		return err
 	}
 
-	// 5. ワークフローID をクリア
+	// 5. ワークフローID をクリア（以降のステータス管理を Watcher に委譲）
 	_ = workflow.ExecuteActivity(ctx, dbAct.DBClearContainerWorkflowID, input.ContainerID).Get(ctx, nil)
 
 	return nil
@@ -128,10 +128,13 @@ func RedeployWorkflow(ctx workflow.Context, input RedeployInput) error {
 		return err
 	}
 
-	// 3. ステータスを running に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil); err != nil {
+	// 3. ステータスを applying に変更（Pod が Ready になるまで Watcher が監視）
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, model.ContainerStatusApplying).Get(ctx, nil); err != nil {
 		return err
 	}
+
+	// 4. ワークフローID をクリア（以降のステータス管理を Watcher に委譲）
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBClearContainerWorkflowID, input.ContainerID).Get(ctx, nil)
 
 	return nil
 }

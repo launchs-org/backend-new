@@ -80,7 +80,7 @@ func (a *DBActivity) DBCreateDeploymentRecord(ctx context.Context, containerID u
 	return nil
 }
 
-// DBClearContainerWorkflowID は完了したワークフローIDをクリアします。
+// DBClearContainerWorkflowID は完了したデプロイワークフローIDをクリアします。
 func (a *DBActivity) DBClearContainerWorkflowID(ctx context.Context, containerID uuid.UUID) error {
 	result := database.DB.WithContext(ctx).Model(&model.Container{}).
 		Where("id = ?", containerID).
@@ -89,6 +89,19 @@ func (a *DBActivity) DBClearContainerWorkflowID(ctx context.Context, containerID
 		})
 	if result.Error != nil {
 		return fmt.Errorf("ワークフローID クリアエラー: %w", result.Error)
+	}
+	return nil
+}
+
+// DBClearContainerScaleWorkflowID は完了したスケールワークフローIDをクリアします。
+func (a *DBActivity) DBClearContainerScaleWorkflowID(ctx context.Context, containerID uuid.UUID) error {
+	result := database.DB.WithContext(ctx).Model(&model.Container{}).
+		Where("id = ?", containerID).
+		Updates(map[string]interface{}{
+			"active_scale_workflow_id": nil,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("スケールワークフローID クリアエラー: %w", result.Error)
 	}
 	return nil
 }

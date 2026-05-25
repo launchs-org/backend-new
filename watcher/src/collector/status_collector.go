@@ -148,17 +148,30 @@ func (c *StatusCollector) updateContainerReplicas(ctx context.Context, container
 	}
 
 	// Pod の状態からコンテナステータスを導出する
-	// deploying/building/scaling 中はワークフローが管理するため上書きしない
 	var container model.Container
-	if err := database.DB.WithContext(ctx).Select("status").Where("id = ?", containerID).First(&container).Error; err == nil {
-		managedByWorkflow := container.Status == "building" || container.Status == "deploying" || container.Status == "scaling"
-		if !managedByWorkflow {
+	if err := database.DB.WithContext(ctx).Select("status", "replicas").Where("id = ?", containerID).First(&container).Error; err == nil {
+		switch container.Status {
+		case model.ContainerStatusBuilding, model.ContainerStatusDeploying, model.ContainerStatusScaling:
+			// ワークフローが管理中のため上書きしない
+
+		case model.ContainerStatusApplying:
+			// K8s apply 完了後、Pod が desired replicas 分 Ready になったら running に遷移。
+			// failed Pod がある場合は即 failed にする。
 			if failedCount > 0 && runningCount == 0 {
-				updates["status"] = "failed"
+				updates["status"] = string(model.ContainerStatusFailed)
+			} else if readyCount >= int64(container.Replicas) && container.Replicas > 0 {
+				updates["status"] = string(model.ContainerStatusRunning)
+			}
+			// まだ Ready 数が足りない場合は applying のまま維持
+
+		default:
+			// running / pending / failed など通常の Pod ベース管理
+			if failedCount > 0 && runningCount == 0 {
+				updates["status"] = string(model.ContainerStatusFailed)
 			} else if runningCount > 0 {
-				updates["status"] = "running"
+				updates["status"] = string(model.ContainerStatusRunning)
 			} else {
-				updates["status"] = "pending"
+				updates["status"] = string(model.ContainerStatusPending)
 			}
 		}
 	}

@@ -14,6 +14,10 @@ const (
 	ContainerStatusPending   ContainerStatus = "pending"
 	ContainerStatusBuilding  ContainerStatus = "building"
 	ContainerStatusDeploying ContainerStatus = "deploying"
+	// ContainerStatusApplying は K8s Deployment の apply が完了し Pod が Ready になるのを待っている状態です。
+	// DeployWorkflow / RedeployWorkflow / ScaleWorkflow が apply 後にセットし、
+	// Watcher が desired replicas 分の Pod が全て Ready になった時点で running に遷移させます。
+	ContainerStatusApplying  ContainerStatus = "applying"
 	ContainerStatusRunning   ContainerStatus = "running"
 	ContainerStatusScaling   ContainerStatus = "scaling"
 	ContainerStatusFailed    ContainerStatus = "failed"
