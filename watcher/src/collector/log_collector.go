@@ -105,8 +105,6 @@ func (c *LogCollector) watchPods(ctx context.Context) {
 	}
 }
 
-// streamPodLogs は指定した Pod のログをストリームして buffer に追加します。
-// 同一 Pod の重複起動を防ぐためロックを使います。
 func (c *LogCollector) streamPodLogs(ctx context.Context, podName, namespace, containerIDStr string) {
 	c.podMu.Lock()
 	if c.activePods[podName] {
@@ -127,16 +125,37 @@ func (c *LogCollector) streamPodLogs(ctx context.Context, podName, namespace, co
 		return
 	}
 
+	for {
+		if err := c.openLogStream(ctx, podName, namespace, containerID); err != nil {
+			fmt.Printf("[log-collector] ストリームエラー（%s）: %v\n", podName, err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second): // 5秒待って再接続
+		}
+
+		// Pod がまだ Running か確認してから再接続
+		k8s := database.K8sClientset
+		pod, err := k8s.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		if err != nil || pod.Status.Phase != corev1.PodRunning {
+			return // Pod が消えていたら終了
+		}
+	}
+}
+
+// openLogStream はストリームを開いて読み切るまでブロックします。
+func (c *LogCollector) openLogStream(ctx context.Context, podName, namespace string, containerID uuid.UUID) error {
 	k8s := database.K8sClientset
-	// sinceSeconds=0 で Pod 起動からの全ログを取得し、Follow で追い続ける
 	logOptions := &corev1.PodLogOptions{
-		Follow:    true,
+		Follow:     true,
 		Timestamps: true,
 	}
 	req := k8s.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
 	stream, err := req.Stream(ctx)
 	if err != nil {
-		return
+		return fmt.Errorf("ストリーム開始失敗: %w", err)
 	}
 	defer stream.Close()
 
@@ -156,6 +175,11 @@ func (c *LogCollector) streamPodLogs(ctx context.Context, podName, namespace, co
 		})
 		c.mu.Unlock()
 	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("スキャンエラー: %w", err)
+	}
+	return nil
 }
 
 // flush はバッファを DB に一括 INSERT してクリアします。
@@ -170,7 +194,12 @@ func (c *LogCollector) flush(ctx context.Context) {
 	c.buffer = c.buffer[:0]
 	c.mu.Unlock()
 
-	if err := database.DB.WithContext(ctx).CreateInBatches(logs, 30).Error; err != nil {
+	// ログを標準出力に出力
+	for _, log := range logs {
+		fmt.Printf("[%s] %s\n", log.Level, log.Message)
+	}
+
+	if err := database.DB.WithContext(ctx).CreateInBatches(logs, 300).Error; err != nil {
 		fmt.Printf("[log-collector] ログ保存エラー: %v\n", err)
 	}
 }
