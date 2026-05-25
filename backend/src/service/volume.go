@@ -63,7 +63,7 @@ func (s *volumeService) Create(ctx context.Context, userID string, projectID uui
 
 	volumeID := uuid.New()
 	if storageClass == "" {
-		storageClass = "standard"
+		storageClass = "default"
 	}
 
 	volume := &model.Volume{

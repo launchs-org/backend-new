@@ -22,7 +22,7 @@ type Volume struct {
 	ProjectID    uuid.UUID `gorm:"type:uuid;not null;index"`
 	Name         string    `gorm:"not null"`
 	SizeMB       int       `gorm:"not null"`
-	StorageClass string    `gorm:"not null;default:'standard'"`
+	StorageClass string    `gorm:"not null;default:'default'"`
 	Status       VolumeStatus    `gorm:"not null;default:'pending'"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
