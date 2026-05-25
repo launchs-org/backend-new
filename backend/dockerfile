@@ -17,7 +17,7 @@ FROM golang:1.26 AS builder
 WORKDIR /go/src/app
 
 COPY ./src .
-COPY --from=shared . /shared
+COPY --from=shared . /go/shared
 
 RUN go mod download
 
