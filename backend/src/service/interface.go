@@ -82,6 +82,8 @@ type EnvVarService interface {
 	ListContainer(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]model.ContainerEnvVar, error)
 	UpsertContainer(ctx context.Context, userID string, projectID, containerID uuid.UUID, vars []EnvVarInput) error
 	DeleteContainer(ctx context.Context, userID string, projectID, containerID uuid.UUID, key string) error
+	GetSelectedProjectEnvVarKeys(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]string, error)
+	SetSelectedProjectEnvVarKeys(ctx context.Context, userID string, projectID, containerID uuid.UUID, keys []string) error
 }
 
 // PortService はポートのビジネスロジックを抽象化します。

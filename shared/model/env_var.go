@@ -21,3 +21,11 @@ type ContainerEnvVar struct {
 	Key         string    `gorm:"not null;uniqueIndex:idx_container_env_var_container_key"`
 	Value       string    `gorm:"not null"`
 }
+
+// ContainerSelectedProjectEnvVar はコンテナが選択したプロジェクト環境変数のキーを管理します。
+// デプロイ時に選択済みのプロジェクト変数のみコンテナに注入されます。
+type ContainerSelectedProjectEnvVar struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ContainerID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_container_selected_env_var"`
+	Key         string    `gorm:"not null;uniqueIndex:idx_container_selected_env_var"`
+}

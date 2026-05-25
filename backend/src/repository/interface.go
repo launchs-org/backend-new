@@ -119,6 +119,8 @@ type EnvVarRepository interface {
 	FindByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.ContainerEnvVar, error)
 	UpsertContainerEnvVars(ctx context.Context, containerID uuid.UUID, envVars []model.ContainerEnvVar) error
 	DeleteContainerEnvVar(ctx context.Context, containerID uuid.UUID, key string) error
+	FindSelectedProjectEnvVarKeys(ctx context.Context, containerID uuid.UUID) ([]string, error)
+	SetSelectedProjectEnvVarKeys(ctx context.Context, containerID uuid.UUID, keys []string) error
 }
 
 // PortRepository はポートの CRUD を抽象化します。

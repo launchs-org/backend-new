@@ -324,6 +324,13 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		}
 	}
 
+	// テンプレートの env vars と接続情報をプロジェクト環境変数として自動登録する。
+	// コンテナ名をサービスホスト名として使い、接頭辞付きで登録する。
+	if err := s.injectTemplateProjectEnvVars(ctx, projectID, req.Name, tmpl.EnvVars, envVars); err != nil {
+		// 失敗しても deploy 自体は止めない（警告のみ）
+		fmt.Printf("[warn] failed to inject template project env vars: %v\n", err)
+	}
+
 	deploymentName := fmt.Sprintf("%s-%s", container.Name, containerID.String())
 	input := DeployWorkflowInput{
 		ContainerID:    containerID.String(),
@@ -650,6 +657,55 @@ func (s *containerService) cancelTimedOutBuildJobs(ctx context.Context, containe
 		}
 	}
 	return nil
+}
+
+// injectTemplateProjectEnvVars はテンプレートデプロイ時にプロジェクト環境変数を自動登録します。
+// 登録するキーは以下の規則で生成します:
+//   - テンプレートの各 env var: {PREFIX}_{KEY}  (PREFIX はコンテナ名を大文字スネークケースに変換)
+//   - ホスト名: {PREFIX}_HOST = <コンテナ名> (K8s Service 名と一致させる)
+//
+// 既存のキーは上書きしません（OnConflict DoUpdates は value を上書きするため、
+// 既存値を保持したい場合は事前に確認が必要だが、初回追加時のみ呼ばれる想定）。
+func (s *containerService) injectTemplateProjectEnvVars(
+	ctx context.Context,
+	projectID uuid.UUID,
+	containerName string,
+	defs []TemplateEnvVarDef,
+	resolved []EnvVarWorkflow,
+) error {
+	// コンテナ名を PREFIX に変換: 英数字以外を _ に、全て大文字
+	prefix := strings.ToUpper(strings.NewReplacer("-", "_", ".", "_", " ", "_").Replace(containerName))
+
+	resolvedMap := make(map[string]string, len(resolved))
+	for _, ev := range resolved {
+		resolvedMap[ev.Key] = ev.Value
+	}
+
+	vars := make([]model.ProjectEnvVar, 0, len(defs)+1)
+
+	// ホスト名: K8s Service は コンテナ名と同名で作られる想定
+	vars = append(vars, model.ProjectEnvVar{
+		ID:        uuid.New(),
+		ProjectID: projectID,
+		Key:       prefix + "_HOST",
+		Value:     containerName,
+	})
+
+	// テンプレートの各 env var
+	for _, def := range defs {
+		val, ok := resolvedMap[def.Key]
+		if !ok {
+			val = def.Default
+		}
+		vars = append(vars, model.ProjectEnvVar{
+			ID:        uuid.New(),
+			ProjectID: projectID,
+			Key:       prefix + "_" + def.Key,
+			Value:     val,
+		})
+	}
+
+	return s.envVarRepo.UpsertProjectEnvVars(ctx, projectID, vars)
 }
 
 // normalizeGitRepo は "owner/repo" または GitHub URL を "https://github.com/owner/repo" に正規化します。

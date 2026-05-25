@@ -139,9 +139,34 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 		size = sizes["small"]
 	}
 
-	envVars := make([]EnvVar, 0, len(container.EnvVars))
+	// 選択されたプロジェクト変数を取得してベースとする
+	var selectedKeys []model.ContainerSelectedProjectEnvVar
+	database.DB.WithContext(ctx).Where("container_id = ?", containerID).Find(&selectedKeys)
+
+	// プロジェクト変数から選択済みキーに対応するものを取得
+	envMap := make(map[string]string)
+	if len(selectedKeys) > 0 {
+		keys := make([]string, len(selectedKeys))
+		for i, s := range selectedKeys {
+			keys[i] = s.Key
+		}
+		var projectVars []model.ProjectEnvVar
+		database.DB.WithContext(ctx).
+			Where("project_id = ? AND key IN ?", container.ProjectID, keys).
+			Find(&projectVars)
+		for _, pv := range projectVars {
+			envMap[pv.Key] = pv.Value
+		}
+	}
+
+	// コンテナ固有変数で上書き
 	for _, e := range container.EnvVars {
-		envVars = append(envVars, EnvVar{Key: e.Key, Value: e.Value})
+		envMap[e.Key] = e.Value
+	}
+
+	envVars := make([]EnvVar, 0, len(envMap))
+	for k, v := range envMap {
+		envVars = append(envVars, EnvVar{Key: k, Value: v})
 	}
 
 	ports := make([]Port, 0, len(container.Ports))

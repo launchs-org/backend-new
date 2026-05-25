@@ -92,6 +92,20 @@ func (s *envVarService) DeleteContainer(ctx context.Context, userID string, proj
 	return s.envVarRepo.DeleteContainerEnvVar(ctx, containerID, key)
 }
 
+func (s *envVarService) GetSelectedProjectEnvVarKeys(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]string, error) {
+	if err := s.checkContainerAccess(ctx, userID, projectID, containerID); err != nil {
+		return nil, err
+	}
+	return s.envVarRepo.FindSelectedProjectEnvVarKeys(ctx, containerID)
+}
+
+func (s *envVarService) SetSelectedProjectEnvVarKeys(ctx context.Context, userID string, projectID, containerID uuid.UUID, keys []string) error {
+	if err := s.checkContainerAccess(ctx, userID, projectID, containerID); err != nil {
+		return err
+	}
+	return s.envVarRepo.SetSelectedProjectEnvVarKeys(ctx, containerID, keys)
+}
+
 func (s *envVarService) checkProjectAccess(ctx context.Context, userID string, projectID uuid.UUID) error {
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {

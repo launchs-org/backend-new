@@ -65,3 +65,36 @@ func (r *envVarRepository) DeleteContainerEnvVar(ctx context.Context, containerI
 		Where("container_id = ? AND key = ?", containerID, key).
 		Delete(&model.ContainerEnvVar{}).Error
 }
+
+func (r *envVarRepository) FindSelectedProjectEnvVarKeys(ctx context.Context, containerID uuid.UUID) ([]string, error) {
+	var rows []model.ContainerSelectedProjectEnvVar
+	err := r.db.WithContext(ctx).Where("container_id = ?", containerID).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, len(rows))
+	for i, row := range rows {
+		keys[i] = row.Key
+	}
+	return keys, nil
+}
+
+func (r *envVarRepository) SetSelectedProjectEnvVarKeys(ctx context.Context, containerID uuid.UUID, keys []string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("container_id = ?", containerID).Delete(&model.ContainerSelectedProjectEnvVar{}).Error; err != nil {
+			return err
+		}
+		if len(keys) == 0 {
+			return nil
+		}
+		rows := make([]model.ContainerSelectedProjectEnvVar, len(keys))
+		for i, k := range keys {
+			rows[i] = model.ContainerSelectedProjectEnvVar{
+				ID:          uuid.New(),
+				ContainerID: containerID,
+				Key:         k,
+			}
+		}
+		return tx.Create(&rows).Error
+	})
+}

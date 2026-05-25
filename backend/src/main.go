@@ -171,6 +171,8 @@ func main() {
 	v1.GET("/projects/:project_id/containers/:container_id/env-vars", envVarH.ListContainer)
 	v1.PUT("/projects/:project_id/containers/:container_id/env-vars", envVarH.UpsertContainer)
 	v1.DELETE("/projects/:project_id/containers/:container_id/env-vars", envVarH.DeleteContainer)
+	v1.GET("/projects/:project_id/containers/:container_id/selected-project-env-vars", envVarH.GetSelectedProjectEnvVarKeys)
+	v1.PUT("/projects/:project_id/containers/:container_id/selected-project-env-vars", envVarH.SetSelectedProjectEnvVarKeys)
 
 	// Ports
 	v1.GET("/projects/:project_id/containers/:container_id/ports", portH.List)
@@ -229,6 +231,7 @@ func runMigrate(db *gorm.DB) error {
 		&model.ContainerStatusHistory{},
 		&model.ProjectEnvVar{},
 		&model.ContainerEnvVar{},
+		&model.ContainerSelectedProjectEnvVar{},
 		&model.Port{},
 		&model.NetworkRoute{},
 		&model.Volume{},

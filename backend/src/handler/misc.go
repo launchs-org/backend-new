@@ -69,14 +69,16 @@ func (h *EnvVarHandler) DeleteProject(c *echo.Context) error {
 	}
 
 	var req struct {
-		Key string `json:"key"`
+		Keys []string `json:"keys"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
 	}
 
-	if err := h.svc.DeleteProject(c.Request().Context(), userID, projectID, req.Key); err != nil {
-		return response.Error(c, err)
+	for _, key := range req.Keys {
+		if err := h.svc.DeleteProject(c.Request().Context(), userID, projectID, key); err != nil {
+			return response.Error(c, err)
+		}
 	}
 	return response.OK(c, map[string]interface{}{})
 }
@@ -126,13 +128,48 @@ func (h *EnvVarHandler) DeleteContainer(c *echo.Context) error {
 	containerID, _ := uuid.Parse(c.Param("container_id"))
 
 	var req struct {
-		Key string `json:"key"`
+		Keys []string `json:"keys"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
 	}
 
-	if err := h.svc.DeleteContainer(c.Request().Context(), userID, projectID, containerID, req.Key); err != nil {
+	for _, key := range req.Keys {
+		if err := h.svc.DeleteContainer(c.Request().Context(), userID, projectID, containerID, key); err != nil {
+			return response.Error(c, err)
+		}
+	}
+	return response.OK(c, map[string]interface{}{})
+}
+
+func (h *EnvVarHandler) GetSelectedProjectEnvVarKeys(c *echo.Context) error {
+	userID := c.Get("UserID").(string)
+	projectID, _ := uuid.Parse(c.Param("project_id"))
+	containerID, _ := uuid.Parse(c.Param("container_id"))
+
+	keys, err := h.svc.GetSelectedProjectEnvVarKeys(c.Request().Context(), userID, projectID, containerID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, map[string]interface{}{"keys": keys})
+}
+
+func (h *EnvVarHandler) SetSelectedProjectEnvVarKeys(c *echo.Context) error {
+	userID := c.Get("UserID").(string)
+	projectID, _ := uuid.Parse(c.Param("project_id"))
+	containerID, _ := uuid.Parse(c.Param("container_id"))
+
+	var req struct {
+		Keys []string `json:"keys"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, err.Error())
+	}
+	if req.Keys == nil {
+		req.Keys = []string{}
+	}
+
+	if err := h.svc.SetSelectedProjectEnvVarKeys(c.Request().Context(), userID, projectID, containerID, req.Keys); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OK(c, map[string]interface{}{})
