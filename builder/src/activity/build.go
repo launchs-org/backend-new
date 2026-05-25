@@ -20,7 +20,7 @@ import (
 // BuildInput はビルドアクティビティへの入力です。
 type BuildInput struct {
 	ContainerID         string
-	BuildJobID          string	
+	BuildJobID          string
 	GitRepo             string
 	GitBranch           string
 	GitSubdir           string
@@ -87,23 +87,38 @@ func (a *BuildActivity) Build(ctx context.Context, input BuildInput) (*BuildResu
 	go func() {
 		logs := make([]model.ContainerLog, 0, 100)
 		buildSource := fmt.Sprintf("build:%s", input.BuildJobID)
-		for line := range logCh {
-			logs = append(logs, model.ContainerLog{
-				ID:          uuid.New(),
-				ContainerID: uuid.MustParse(input.ContainerID),
-				// ビルドログは "build:{build_job_id}" という PodName で識別
-				PodName:   &buildSource,
-				Timestamp: time.Now(),
-				Level:     "INFO",
-				Message:   line,
-			})
-			if len(logs) >= 100 {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		flush := func() {
+			if len(logs) > 0 {
 				database.DB.Create(&logs)
 				logs = logs[:0]
 			}
 		}
-		if len(logs) > 0 {
-			database.DB.Create(&logs)
+
+		for {
+			select {
+			case line, ok := <-logCh:
+				if !ok {
+					flush()
+					return
+				}
+				logs = append(logs, model.ContainerLog{
+					ID:          uuid.New(),
+					ContainerID: uuid.MustParse(input.ContainerID),
+					// ビルドログは "build:{build_job_id}" という PodName で識別
+					PodName:   &buildSource,
+					Timestamp: time.Now(),
+					Level:     "INFO",
+					Message:   line,
+				})
+				if len(logs) >= 100 {
+					flush()
+				}
+			case <-ticker.C:
+				flush()
+			}
 		}
 	}()
 
