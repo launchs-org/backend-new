@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"launchs/shared/database"
 
@@ -74,12 +75,30 @@ func (a *NamespaceActivity) NamespaceCreate(ctx context.Context, namespace, proj
 	return nil
 }
 
-// NamespaceDelete は Namespace を削除します（配下のリソースも一括削除されます）。
+// NamespaceDelete は Namespace を削除し、完全に消えるまで待機します。
 func (a *NamespaceActivity) NamespaceDelete(ctx context.Context, namespace string) error {
 	k8s := database.K8sClientset
+
 	err := k8s.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("Namespace 削除エラー %s: %w", namespace, err)
 	}
-	return nil
+
+	// Namespace が完全に消えるまでポーリング（最大 10 分）
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+
+		_, err := k8s.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("Namespace 状態確認エラー %s: %w", namespace, err)
+		}
+		// まだ Terminating 中 → 次のループへ
+	}
 }

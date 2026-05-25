@@ -71,7 +71,7 @@ func CreateProjectWorkflow(ctx workflow.Context, input CreateProjectInput) (*Har
 // Namespace 削除によって配下のリソースが全て削除されます。
 func DeleteProjectWorkflow(ctx workflow.Context, input DeleteProjectInput) error {
 	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
+		StartToCloseTimeout: 15 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 3,
 		},
