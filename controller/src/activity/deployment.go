@@ -115,14 +115,11 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 	// 既存の Deployment を取得します
 	existing, err := k8s.AppsV1().Deployments(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
 
-	// エラーが起きたとき
 	if err != nil {
-		// 見つからないとき以外はエラーを返す
 		if !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("Deployment 取得エラー: %w", err)
 		}
 
-		// 存在しない場合は作成します
 		_, err = k8s.AppsV1().Deployments(spec.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("Deployment 作成エラー: %w", err)
@@ -131,7 +128,7 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		return nil
 	}
 
-	// 存在する場合は既存のリソースを更新する
+	// DB から組み立てた最新 spec で上書き
 	deployment.ResourceVersion = existing.ResourceVersion
 	_, err = k8s.AppsV1().Deployments(spec.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
 	if err != nil {

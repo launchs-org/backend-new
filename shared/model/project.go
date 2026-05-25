@@ -13,6 +13,7 @@ const (
 	ProjectStatusPending     ProjectStatus = "pending"
 	ProjectStatusActive      ProjectStatus = "active"
 	ProjectStatusTerminating ProjectStatus = "terminating"
+	ProjectStatusFailed      ProjectStatus = "failed"
 )
 
 // Project は Launchs-org の最上位リソースです。

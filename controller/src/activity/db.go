@@ -3,12 +3,14 @@ package activity
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"launchs/shared/config"
 	"launchs/shared/database"
 	"launchs/shared/model"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm/clause"
 )
 
 // DBActivity はコントローラーが行う DB 更新操作を担当します。
@@ -147,7 +149,7 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 
 	return DeploymentSpec{
 		Namespace:     namespace,
-		Name:          fmt.Sprintf("%s-%s", container.Name, containerID.String()),
+		Name:          model.GetDeploymentName(containerID),
 		Image:         imageRef,
 		Replicas:      container.Replicas,
 		CPURequest:    size.CPURequest,
@@ -166,18 +168,27 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 
 // プロジェクトを削除するアクティビティ
 func (a *DBActivity) DBDeleteProject(ctx context.Context, projectID string) error {
-	// 関連するコンテナを削除
-	result := database.DB.WithContext(ctx).Delete(&model.Container{}, "project_id = ?", projectID)
+	// deletingかどうか判定する
+	var project model.Project
+	result := database.DB.WithContext(ctx).First(&project, "id = ?", projectID)
 	if result.Error != nil {
-		return fmt.Errorf("コンテナ削除エラー: %w", result.Error)
+		return fmt.Errorf("プロジェクト取得エラー: %w", result.Error)
 	}
 
-	// 関連するボリュームを削除
-	result = database.DB.WithContext(ctx).Delete(&model.Project{}, "id = ?", projectID)
-	if result.Error != nil {
-		return fmt.Errorf("プロジェクト削除エラー: %w", result.Error)
-	}
-	return nil
+	defer func() {
+		// 失敗したとき Failed にする
+		if err := a.DBUpdateProjectStatus(ctx, projectID, string(model.ProjectStatusFailed)); err != nil {
+			log.Fatalf("プロジェクト状態更新エラー: %s", err.Error())
+		}
+	}()
+
+    result = database.DB.WithContext(ctx).
+        Select(clause.Associations).
+        Delete(&model.Project{}, "id = ?", projectID)
+    if result.Error != nil {
+        return fmt.Errorf("プロジェクト削除エラー: %w", result.Error)
+    }
+    return nil
 }
 
 // プロジェクトの状態を更新するアクティビティ

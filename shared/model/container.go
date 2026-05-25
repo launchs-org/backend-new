@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,4 +57,15 @@ type Container struct {
 	BuildJobs       []BuildJob               `gorm:"foreignKey:ContainerID"`
 	StatusHistories []ContainerStatusHistory `gorm:"foreignKey:ContainerID"`
 	PodStatuses     []PodStatus              `gorm:"foreignKey:ContainerID"`
+}
+
+// GetDeploymentName は Kubernetes Deployment 名を返します。
+// コンテナIDのみを使うことで、コンテナ名変更後も同じ Deployment を指し続けます。
+func GetDeploymentName(containerID uuid.UUID) string {
+	return fmt.Sprintf("container-%s", containerID.String())
+}
+
+// GetK8sNamespace は Kubernetes Namespace 名を返します。
+func GetK8sNamespace(projectID uuid.UUID) string {
+	return fmt.Sprintf("project-%s", projectID.String())
 }
