@@ -166,7 +166,14 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 
 // プロジェクトを削除するアクティビティ
 func (a *DBActivity) DBDeleteProject(ctx context.Context, projectID string) error {
-	result := database.DB.WithContext(ctx).Delete(&model.Project{}, "id = ?", projectID)
+	// 関連するコンテナを削除
+	result := database.DB.WithContext(ctx).Delete(&model.Container{}, "project_id = ?", projectID)
+	if result.Error != nil {
+		return fmt.Errorf("コンテナ削除エラー: %w", result.Error)
+	}
+
+	// 関連するボリュームを削除
+	result = database.DB.WithContext(ctx).Delete(&model.Project{}, "id = ?", projectID)
 	if result.Error != nil {
 		return fmt.Errorf("プロジェクト削除エラー: %w", result.Error)
 	}

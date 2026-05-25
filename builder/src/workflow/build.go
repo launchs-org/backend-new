@@ -142,7 +142,7 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 	deployInput := buildDeployControllerInput{
 		ContainerID:    containerID,
 		Namespace:      input.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", containerName, containerName),
+		DeploymentName: fmt.Sprintf("%s-%s", "container", containerID.String()),
 		ImageRef:       buildResult.ImageRef,
 		Replicas:       input.Replicas,
 		ResourceSize:   input.ResourceSize,

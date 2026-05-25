@@ -56,7 +56,7 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 		deployInput := DeployInput{
 			ContainerID:    containerID,
 			Namespace:      input.Namespace,
-			DeploymentName: fmt.Sprintf("%s-%s", c.ContainerName, c.ContainerID),
+			DeploymentName: fmt.Sprintf("%s-%s", "container", c.ContainerID),
 			ImageRef:       c.ImageTag,
 			Replicas:       c.Replicas,
 			ResourceSize:   c.ResourceSize,

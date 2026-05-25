@@ -179,7 +179,7 @@ func (c *StatusCollector) recordStatusHistory(ctx context.Context, containerID u
 	history := &model.ContainerStatusHistory{
 		ID:          uuid.New(),
 		ContainerID: containerID,
-		Status:      container.Status,
+		Status:      string(container.Status),
 		Replicas:    container.Replicas,
 		ReadyReplicas: container.ReadyReplicas,
 		FailedReplicas: container.FailedReplicas,
