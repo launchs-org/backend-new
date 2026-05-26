@@ -157,7 +157,9 @@ func (c *StatusCollector) updateContainerReplicas(ctx context.Context, container
 		case model.ContainerStatusApplying:
 			// K8s apply 完了後、Pod が desired replicas 分 Ready になったら running に遷移。
 			// failed Pod がある場合は即 failed にする。
-			if failedCount > 0 && runningCount == 0 {
+			// rollout restart 中は古い Pod がまだ running で残るため、
+			// readyCount だけを判定基準にして applying を維持する。
+			if failedCount > 0 && readyCount == 0 {
 				updates["status"] = string(model.ContainerStatusFailed)
 			} else if readyCount >= int64(container.Replicas) && container.Replicas > 0 {
 				updates["status"] = string(model.ContainerStatusRunning)

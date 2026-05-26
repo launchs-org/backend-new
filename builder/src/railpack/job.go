@@ -302,6 +302,12 @@ func deleteJob(ctx context.Context, cs *kubernetes.Clientset, ns, jobID string) 
 	)
 }
 
+// DeleteJob は K8s Job（railpack-{jobID}）を削除します。
+// 外部パッケージから直接 K8s Job を削除したい場合に使います。
+func DeleteJob(ctx context.Context, cs *kubernetes.Clientset, ns, jobID string) error {
+	return deleteJob(ctx, cs, ns, jobID)
+}
+
 // getJobStatus は指定した jobID の現在の BuildStatus を返す。
 func getJobStatus(ctx context.Context, cs *kubernetes.Clientset, ns, jobID string) (BuildStatus, error) {
 	job, err := cs.BatchV1().Jobs(ns).Get(ctx, "railpack-"+jobID, metav1.GetOptions{})

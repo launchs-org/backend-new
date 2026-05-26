@@ -73,6 +73,27 @@ func BuildDeployWorkflow(ctx workflow.Context, input BuildWorkflowInput) error {
 	containerID, _ := uuid.Parse(input.ContainerID)
 	buildJobID, _ := uuid.Parse(input.BuildJobID)
 
+	// キャンセル・失敗時に K8s Job 削除とステータスを failed に確定する
+	// （containerID / buildJobID は上で宣言済みなので defer 内で参照可能）
+	// workflow がキャンセルされると ctx は cancelled になるため disconnectedCtx を使う
+	defer func() {
+		if ctx.Err() == nil {
+			// 正常完了の場合は cleanup 不要
+			return
+		}
+		cleanupCtx, _ := workflow.NewDisconnectedContext(ctx)
+		cleanupAo := workflow.ActivityOptions{
+			StartToCloseTimeout: 2 * time.Minute,
+			RetryPolicy: &sdktemporal.RetryPolicy{
+				MaximumAttempts: 3,
+			},
+		}
+		cleanupCtx = workflow.WithActivityOptions(cleanupCtx, cleanupAo)
+		_ = workflow.ExecuteActivity(cleanupCtx, buildAct.DeleteBuildK8sJob, input.BuildJobID).Get(cleanupCtx, nil)
+		_ = workflow.ExecuteActivity(cleanupCtx, buildAct.UpdateContainerStatus, containerID, "failed").Get(cleanupCtx, nil)
+		_ = workflow.ExecuteActivity(cleanupCtx, buildAct.UpdateBuildJobStatus, buildJobID, "failed", "").Get(cleanupCtx, nil)
+	}()
+
 	// 1. ステータスを building に更新
 	if err := workflow.ExecuteActivity(ctx, buildAct.UpdateContainerStatus, containerID, "building").Get(ctx, nil); err != nil {
 		return err

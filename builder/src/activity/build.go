@@ -179,3 +179,20 @@ func (a *BuildActivity) UpdateContainerStatus(ctx context.Context, containerID u
 		Update("status", status)
 	return result.Error
 }
+
+// DeleteBuildK8sJob は K8s 上のビルド Job（railpack-{buildJobID}）を削除します。
+// Job が存在しない場合は成功とみなします。
+func (a *BuildActivity) DeleteBuildK8sJob(ctx context.Context, buildJobID string) error {
+	clientset := database.K8sClientset.(*kubernetes.Clientset)
+
+	buildNamespace := os.Getenv("BUILDER_NAMESPACE")
+	if buildNamespace == "" {
+		buildNamespace = "buildkit"
+	}
+
+	if err := railpack.DeleteJob(ctx, clientset, buildNamespace, buildJobID); err != nil {
+		// Job が存在しない場合（NotFound）は無視
+		return nil
+	}
+	return nil
+}

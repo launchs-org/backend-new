@@ -83,7 +83,8 @@ func MountVolumeWorkflow(ctx workflow.Context, input MountVolumeInput) error {
 		return err
 	}
 
-	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
+	// applying に変更（Pod が Ready になるまで Watcher が監視して running に遷移）
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "applying").Get(ctx, nil)
 }
 
 // UnmountVolumeWorkflow はボリュームをアンマウントした状態で Deployment を再 Apply します。
@@ -114,5 +115,6 @@ func UnmountVolumeWorkflow(ctx workflow.Context, input UnmountVolumeInput) error
 		return err
 	}
 
-	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "running").Get(ctx, nil)
+	// applying に変更（Pod が Ready になるまで Watcher が監視して running に遷移）
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "applying").Get(ctx, nil)
 }
