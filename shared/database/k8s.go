@@ -14,6 +14,7 @@ import (
 
 var K8sClientset kubernetes.Interface
 var K8sDynamicClient dynamic.Interface
+var K8sRestConfig *rest.Config
 
 func InitK8s() {
 	var config *rest.Config
@@ -30,6 +31,8 @@ func InitK8s() {
 			panic(fmt.Sprintf("Kubernetes 設定の読み込みに失敗しました: %v", err))
 		}
 	}
+
+	K8sRestConfig = config
 
 	K8sClientset, err = kubernetes.NewForConfig(config)
 	if err != nil {

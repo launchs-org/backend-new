@@ -27,5 +27,7 @@ type NetworkRoute struct {
 	Protocol string `gorm:"default:'TCP'"`
 	// IngressRoute の場合のみセット
 	Subdomain *string
+	// Service type の場合: controller が Service 作成後に保存する ClusterIP
+	ClusterIP string
 	CreatedAt time.Time
 }

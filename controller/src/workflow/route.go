@@ -9,7 +9,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// CreateServiceWorkflow は Kubernetes Service を作成します。
+// CreateServiceWorkflow は Kubernetes Service を作成し、ClusterIP を DB に保存します。
 func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceInput) error {
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 2 * time.Minute,
@@ -20,7 +20,15 @@ func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceInput) error
 	ctx = workflow.WithActivityOptions(ctx, ao)
 
 	svcAct := &activity.ServiceActivity{}
-	return workflow.ExecuteActivity(ctx, svcAct.ServiceApply, input.ServiceSpec).Get(ctx, nil)
+	var clusterIP string
+	if err := workflow.ExecuteActivity(ctx, svcAct.ServiceApply, input.ServiceSpec).Get(ctx, &clusterIP); err != nil {
+		return err
+	}
+
+	dbAct := &activity.DBActivity{}
+	return workflow.ExecuteActivity(ctx, dbAct.DBUpdateRouteEndpoint,
+		input.RouteID, clusterIP,
+	).Get(ctx, nil)
 }
 
 // DeleteServiceWorkflow は Kubernetes Service を削除します。

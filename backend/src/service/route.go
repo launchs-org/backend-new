@@ -46,7 +46,7 @@ func NewRouteService(
 	}
 }
 
-func (s *routeService) List(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]model.NetworkRoute, error) {
+func (s *routeService) List(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]RouteWithEndpoint, error) {
 	if err := s.checkAccess(ctx, userID, projectID, containerID); err != nil {
 		return nil, err
 	}
@@ -87,6 +87,7 @@ func (s *routeService) CreateService(ctx context.Context, userID string, project
 	}
 	type createServiceInput struct {
 		ContainerID uuid.UUID   `json:"ContainerID"`
+		RouteID     uuid.UUID   `json:"RouteID"`
 		ServiceSpec serviceSpec `json:"ServiceSpec"`
 	}
 
@@ -96,6 +97,7 @@ func (s *routeService) CreateService(ctx context.Context, userID string, project
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateService, createServiceInput{
 		ContainerID: containerID,
+		RouteID:     routeID,
 		ServiceSpec: serviceSpec{
 			Namespace: project.Namespace,
 			Name:      svcName,

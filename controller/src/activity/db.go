@@ -296,3 +296,14 @@ func (a *DBActivity) DBUpdateVolumeStatus(ctx context.Context, volumeID uuid.UUI
 	}
 	return nil
 }
+
+// DBUpdateRouteEndpoint は NetworkRoute の ClusterIP を更新します。
+func (a *DBActivity) DBUpdateRouteEndpoint(ctx context.Context, routeID uuid.UUID, clusterIP string) error {
+	result := database.DB.WithContext(ctx).Model(&model.NetworkRoute{}).
+		Where("id = ?", routeID).
+		Update("cluster_ip", clusterIP)
+	if result.Error != nil {
+		return fmt.Errorf("ルートClusterIP更新エラー: %w", result.Error)
+	}
+	return nil
+}

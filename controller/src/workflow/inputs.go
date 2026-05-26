@@ -97,6 +97,7 @@ type UnmountVolumeInput struct {
 // CreateServiceInput は CreateServiceWorkflow への入力です。
 type CreateServiceInput struct {
 	ContainerID uuid.UUID
+	RouteID     uuid.UUID
 	ServiceSpec activity.ServiceSpec
 }
 

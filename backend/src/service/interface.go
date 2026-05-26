@@ -93,9 +93,12 @@ type PortService interface {
 	Delete(ctx context.Context, userID string, projectID, containerID, portID uuid.UUID) error
 }
 
+// RouteWithEndpoint は NetworkRoute の alias です（DB に ClusterIP が含まれているため）。
+type RouteWithEndpoint = model.NetworkRoute
+
 // RouteService はネットワークルートのビジネスロジックを抽象化します。
 type RouteService interface {
-	List(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]model.NetworkRoute, error)
+	List(ctx context.Context, userID string, projectID, containerID uuid.UUID) ([]RouteWithEndpoint, error)
 	CreateService(ctx context.Context, userID string, projectID, containerID uuid.UUID, port int, protocol string) (workflowID string, err error)
 	CreateIngress(ctx context.Context, userID string, projectID, containerID uuid.UUID, port int) (routeID, subdomain, workflowID string, err error)
 	Delete(ctx context.Context, userID string, projectID, containerID, routeID uuid.UUID) (workflowID string, err error)

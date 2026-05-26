@@ -15,8 +15,8 @@ import (
 // ServiceActivity は Kubernetes Service の作成・削除を担当します。
 type ServiceActivity struct{}
 
-// ServiceApply は Service を作成または更新します。
-func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) error {
+// ServiceApply は Service を作成または更新し、割り当てられた ClusterIP を返します。
+func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) (string, error) {
 	k8s := database.K8sClientset
 
 	ports := make([]corev1.ServicePort, 0, len(spec.Ports))
@@ -48,22 +48,22 @@ func (a *ServiceActivity) ServiceApply(ctx context.Context, spec ServiceSpec) er
 	existing, err := k8s.CoreV1().Services(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			return fmt.Errorf("Service 取得エラー: %w", err)
+			return "", fmt.Errorf("Service 取得エラー: %w", err)
 		}
-		_, err = k8s.CoreV1().Services(spec.Namespace).Create(ctx, svc, metav1.CreateOptions{})
+		created, err := k8s.CoreV1().Services(spec.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 		if err != nil {
-			return fmt.Errorf("Service 作成エラー: %w", err)
+			return "", fmt.Errorf("Service 作成エラー: %w", err)
 		}
-		return nil
+		return created.Spec.ClusterIP, nil
 	}
 
 	svc.ResourceVersion = existing.ResourceVersion
-	svc.Spec.LoadBalancerIP = existing.Spec.LoadBalancerIP // LoadBalancerIP は不変なので引き継ぐ
-	_, err = k8s.CoreV1().Services(spec.Namespace).Update(ctx, svc, metav1.UpdateOptions{})
+	svc.Spec.LoadBalancerIP = existing.Spec.LoadBalancerIP
+	updated, err := k8s.CoreV1().Services(spec.Namespace).Update(ctx, svc, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("Service 更新エラー: %w", err)
+		return "", fmt.Errorf("Service 更新エラー: %w", err)
 	}
-	return nil
+	return updated.Spec.ClusterIP, nil
 }
 
 // ServiceDelete は Service を削除します。
@@ -75,3 +75,4 @@ func (a *ServiceActivity) ServiceDelete(ctx context.Context, namespace, name str
 	}
 	return nil
 }
+
