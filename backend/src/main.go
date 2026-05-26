@@ -62,6 +62,7 @@ func main() {
 	buildJobRepo := repository.NewBuildJobRepository(db)
 	snapshotRepo := repository.NewSnapshotRepository(db)
 	connectionRepo := repository.NewServiceConnectionRepository(db)
+	statusHistRepo := repository.NewContainerStatusHistoryRepository(db)
 
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, buildJobRepo, snapshotRepo, temporalClient)
@@ -79,7 +80,7 @@ func main() {
 
 	// Handler 初期化
 	projectH := handler.NewProjectHandler(projectSvc)
-	containerH := handler.NewContainerHandler(containerSvc)
+	containerH := handler.NewContainerHandler(containerSvc, statusHistRepo)
 	envVarH := handler.NewEnvVarHandler(envVarSvc)
 	portH := handler.NewPortHandler(portSvc)
 	routeH := handler.NewRouteHandler(routeSvc)

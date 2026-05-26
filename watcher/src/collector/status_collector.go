@@ -183,36 +183,41 @@ func (c *StatusCollector) updateContainerReplicas(ctx context.Context, container
 		Updates(updates)
 }
 
-// recordStatusHistory は container_status_histories に INSERT し、古いレコードを削除します。
-// 常に最新 100 件のみ保持します。
+// recordStatusHistory はステータスが前回から変化した時だけ INSERT します。
+// 1週間を超えた古いレコードは削除します。
 func (c *StatusCollector) recordStatusHistory(ctx context.Context, containerID uuid.UUID) {
 	var container model.Container
 	if err := database.DB.WithContext(ctx).Where("id = ?", containerID).First(&container).Error; err != nil {
 		return
 	}
 
-	history := &model.ContainerStatusHistory{
-		ID:          uuid.New(),
-		ContainerID: containerID,
-		Status:      string(container.Status),
-		Replicas:    container.Replicas,
-		ReadyReplicas: container.ReadyReplicas,
-		FailedReplicas: container.FailedReplicas,
-		CreatedAt:   time.Now(),
+	// 直前のレコードと比較して変化がなければスキップ
+	var latest model.ContainerStatusHistory
+	err := database.DB.WithContext(ctx).
+		Where("container_id = ?", containerID).
+		Order("created_at DESC").
+		First(&latest).Error
+	if err == nil &&
+		latest.Status == string(container.Status) &&
+		latest.ReadyReplicas == container.ReadyReplicas &&
+		latest.FailedReplicas == container.FailedReplicas {
+		return
 	}
-	database.DB.WithContext(ctx).Create(history)
 
-	// 最新 100 件を超える古いレコードを削除
-	database.DB.WithContext(ctx).Exec(`
-		DELETE FROM container_status_histories
-		WHERE container_id = ?
-		AND id NOT IN (
-			SELECT id FROM container_status_histories
-			WHERE container_id = ?
-			ORDER BY created_at DESC
-			LIMIT 100
-		)
-	`, containerID, containerID)
+	database.DB.WithContext(ctx).Create(&model.ContainerStatusHistory{
+		ID:             uuid.New(),
+		ContainerID:    containerID,
+		Status:         string(container.Status),
+		Replicas:       container.Replicas,
+		ReadyReplicas:  container.ReadyReplicas,
+		FailedReplicas: container.FailedReplicas,
+		CreatedAt:      time.Now(),
+	})
+
+	// 1週間を超えた古いレコードを削除
+	database.DB.WithContext(ctx).
+		Where("container_id = ? AND created_at < ?", containerID, time.Now().AddDate(0, 0, -7)).
+		Delete(&model.ContainerStatusHistory{})
 }
 
 // podPhaseToStatus は K8s Pod Phase をアプリのステータス文字列に変換します。

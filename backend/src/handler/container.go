@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"backend/repository"
 	"backend/response"
 	"backend/service"
 	"github.com/google/uuid"
@@ -12,11 +13,12 @@ import (
 
 // ContainerHandler はコンテナ関連のリクエストを処理します。
 type ContainerHandler struct {
-	svc service.ContainerService
+	svc            service.ContainerService
+	statusHistRepo repository.ContainerStatusHistoryRepository
 }
 
-func NewContainerHandler(svc service.ContainerService) *ContainerHandler {
-	return &ContainerHandler{svc: svc}
+func NewContainerHandler(svc service.ContainerService, statusHistRepo repository.ContainerStatusHistoryRepository) *ContainerHandler {
+	return &ContainerHandler{svc: svc, statusHistRepo: statusHistRepo}
 }
 
 func (h *ContainerHandler) List(c *echo.Context) error {
@@ -267,8 +269,28 @@ func (h *ContainerHandler) CreateWebhook(c *echo.Context) error {
 }
 
 func (h *ContainerHandler) GetStatusHistories(c *echo.Context) error {
-	// TODO: ContainerStatusHistoryRepository から取得する実装
-	return response.OK(c, []interface{}{})
+	containerID, err := uuid.Parse(c.Param("container_id"))
+	if err != nil {
+		return badRequest(c, "invalid container_id")
+	}
+
+	histories, err := h.statusHistRepo.FindByContainerID(c.Request().Context(), containerID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+
+	result := make([]map[string]interface{}, len(histories))
+	for i, h := range histories {
+		result[i] = map[string]interface{}{
+			"id":              h.ID.String(),
+			"status":          h.Status,
+			"replicas":        h.Replicas,
+			"ready_replicas":  h.ReadyReplicas,
+			"failed_replicas": h.FailedReplicas,
+			"created_at":      h.CreatedAt,
+		}
+	}
+	return response.OK(c, result)
 }
 
 // ---- レスポンス型 ----
