@@ -94,16 +94,16 @@ func (c *MetricCollector) collect(ctx context.Context) {
 			continue
 		}
 
-		cpuUsage, memBytes := aggregatePodMetrics(podMetrics)
-		cpuRequestCores := c.getPodCPURequestCores(ctx, podMetrics.Namespace, podMetrics.Name)
-		fmt.Printf("[metric-collector] pod=%s cpu=%.3f/%gcores mem=%dMi\n", podMetrics.Name, cpuUsage, cpuRequestCores, memBytes/1024/1024)
+		cpuMillis, memBytes := aggregatePodMetrics(podMetrics)
+		cpuRequestMillis := c.getPodCPURequestCores(ctx, podMetrics.Namespace, podMetrics.Name)
+		fmt.Printf("[metric-collector] pod=%s cpu=%.0fm/%.0fm mem=%dMi\n", podMetrics.Name, cpuMillis, cpuRequestMillis, memBytes/1024/1024)
 		metrics = append(metrics, model.ContainerMetric{
 			ID:              uuid.New(),
 			ContainerID:     containerID,
 			PodName:         podMetrics.Name,
 			Timestamp:       time.Now(),
-			CPUUsage:        cpuUsage,
-			CPURequestCores: cpuRequestCores,
+			CPUUsage:        cpuMillis,
+			CPURequestCores: cpuRequestMillis,
 			MemoryBytes:     memBytes,
 		})
 	}
@@ -130,16 +130,16 @@ func (c *MetricCollector) cleanup(ctx context.Context) {
 }
 
 // aggregatePodMetrics は Pod の全コンテナの CPU・メモリ使用量を合計します。
-// CPU はコア数（例: 0.25 = 250m）、メモリはバイト単位で返します。
-func aggregatePodMetrics(podMetrics metricsv1beta1.PodMetrics) (cpuUsage float64, memBytes int64) {
+// CPU はミリコア単位（1000m = 1コア）、メモリはバイト単位で返します。
+func aggregatePodMetrics(podMetrics metricsv1beta1.PodMetrics) (cpuMillis float64, memBytes int64) {
 	for _, container := range podMetrics.Containers {
-		cpuUsage += float64(container.Usage.Cpu().MilliValue()) / 1000.0
+		cpuMillis += float64(container.Usage.Cpu().MilliValue())
 		memBytes += container.Usage.Memory().Value()
 	}
-	return cpuUsage, memBytes
+	return cpuMillis, memBytes
 }
 
-// getPodCPURequestCores は Pod spec から CPU requests の合計をコア数で返します。
+// getPodCPURequestCores は Pod spec から CPU requests の合計をミリコアで返します。
 // 取得できない場合は 0 を返します。
 func (c *MetricCollector) getPodCPURequestCores(ctx context.Context, namespace, podName string) float64 {
 	if c.k8sClient == nil {
@@ -152,7 +152,7 @@ func (c *MetricCollector) getPodCPURequestCores(ctx context.Context, namespace, 
 	var total float64
 	for _, container := range pod.Spec.Containers {
 		if req, ok := container.Resources.Requests["cpu"]; ok {
-			total += float64(req.MilliValue()) / 1000.0
+			total += float64(req.MilliValue())
 		}
 	}
 	return total
