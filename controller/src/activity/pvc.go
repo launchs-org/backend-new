@@ -32,7 +32,7 @@ func (a *PVCActivity) PVCCreate(ctx context.Context, spec PVCSpec) error {
 			Labels:    map[string]string{"launchs-managed": "true"},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
 			// StorageClassName: &storageClass,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
