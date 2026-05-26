@@ -133,13 +133,7 @@ func (s *metricService) Get(ctx context.Context, userID string, projectID, conta
 		return nil, nil, err
 	}
 
-	// CPU と memory を分割して返します
-	var cpu, memory []model.ContainerMetric
-	for _, m := range metrics {
-		cpu = append(cpu, m)
-		memory = append(memory, m)
-	}
-	return cpu, memory, nil
+	return metrics, metrics, nil
 }
 
 // ---- build job service ----

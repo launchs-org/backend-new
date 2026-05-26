@@ -98,7 +98,7 @@ func MetricsIntervalSec() int {
 
 // MetricsRetentionDays はメトリクス保持日数を返します。
 func MetricsRetentionDays() int {
-	return getEnvInt("METRICS_RETENTION_DAYS", 30)
+	return getEnvInt("METRICS_RETENTION_DAYS", 7)
 }
 
 func getEnv(key, defaultVal string) string {

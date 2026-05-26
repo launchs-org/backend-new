@@ -268,6 +268,7 @@ func (h *RouteHandler) List(c *echo.Context) error {
 			"port":       r.Port,
 			"protocol":   r.Protocol,
 			"subdomain":  r.Subdomain,
+			"cluster_ip": r.ClusterIP,
 			"created_at": r.CreatedAt,
 		}
 	}
@@ -421,12 +422,27 @@ func (h *MetricHandler) Get(c *echo.Context) error {
 	projectID, _ := uuid.Parse(c.Param("project_id"))
 	containerID, _ := uuid.Parse(c.Param("container_id"))
 
-	var from, to time.Time
+	to := time.Now()
+	from := to.Add(-1 * time.Hour) // デフォルト1時間
+
+	if s := c.QueryParam("duration"); s != "" {
+		if len(s) > 1 && s[len(s)-1] == 'd' {
+			if days, err := strconv.Atoi(s[:len(s)-1]); err == nil {
+				from = to.AddDate(0, 0, -days)
+			}
+		} else if d, err := time.ParseDuration(s); err == nil {
+			from = to.Add(-d)
+		}
+	}
 	if s := c.QueryParam("from"); s != "" {
-		from, _ = time.Parse(time.RFC3339, s)
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			from = t
+		}
 	}
 	if s := c.QueryParam("to"); s != "" {
-		to, _ = time.Parse(time.RFC3339, s)
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			to = t
+		}
 	}
 
 	cpu, memory, err := h.svc.Get(c.Request().Context(), userID, projectID, containerID, from, to)
@@ -441,11 +457,15 @@ func (h *MetricHandler) Get(c *echo.Context) error {
 
 	cpuPoints := make([]metricPoint, len(cpu))
 	for i, m := range cpu {
-		cpuPoints[i] = metricPoint{Timestamp: m.Timestamp, Value: m.CPUUsage}
+		var cpuPercent float64
+		if m.CPURequestCores > 0 {
+			cpuPercent = (m.CPUUsage / m.CPURequestCores) * 100
+		}
+		cpuPoints[i] = metricPoint{Timestamp: m.Timestamp, Value: cpuPercent}
 	}
 	memPoints := make([]metricPoint, len(memory))
 	for i, m := range memory {
-		memPoints[i] = metricPoint{Timestamp: m.Timestamp, Value: float64(m.MemoryBytes)}
+		memPoints[i] = metricPoint{Timestamp: m.Timestamp, Value: float64(m.MemoryBytes) / 1024 / 1024}
 	}
 
 	return response.OK(c, map[string]interface{}{
