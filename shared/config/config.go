@@ -101,6 +101,29 @@ func MetricsRetentionDays() int {
 	return getEnvInt("METRICS_RETENTION_DAYS", 7)
 }
 
+// CollectorRestartDelaySec はコレクターがエラーで終了した後、再起動するまでの待機秒数を返します。
+func CollectorRestartDelaySec() int {
+	return getEnvInt("COLLECTOR_RESTART_DELAY_SEC", 5)
+}
+
+// LeaderLeaseTTLSec はリーダーシップの有効期間（秒）を返します。
+// この時間内にハートビートが更新されなければ、他の Pod がリーダーを取得できます。
+func LeaderLeaseTTLSec() int {
+	return getEnvInt("LEADER_LEASE_TTL_SEC", 10)
+}
+
+// LeaderRenewIntervalSec はリーダーのハートビート送信間隔（秒）を返します。
+func LeaderRenewIntervalSec() int {
+	return getEnvInt("LEADER_RENEW_INTERVAL_SEC", 5)
+}
+
+// WatcherPodID はこの watcher インスタンスを識別する文字列を返します。
+// Kubernetes 上では POD_NAME 環境変数（fieldRef で注入）が使われます。
+// 未設定の場合は空文字を返すので、呼び出し側でフォールバックを生成してください。
+func WatcherPodID() string {
+	return os.Getenv("POD_NAME")
+}
+
 func getEnv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
