@@ -152,3 +152,13 @@ func GetMaxReplicas() int {
 func GetMinReplicas() int {
 	return getEnvInt("MIN_REPLICAS", 0)
 }
+
+// GetMinVolumeSizeMB は最小ボリュームサイズ（MB）を返します。
+func GetMinVolumeSizeMB() int {
+	return getEnvInt("MIN_VOLUME_SIZE_MB", 10)
+}
+
+// GetMaxVolumeSizeMB は最大ボリュームサイズ（MB）を返します。
+func GetMaxVolumeSizeMB() int {
+	return getEnvInt("MAX_VOLUME_SIZE_MB", 3000)
+}

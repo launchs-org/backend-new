@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"launchs/shared/config"
 	"strconv"
 	"time"
 
 	"backend/response"
 	"backend/service"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
@@ -659,6 +661,11 @@ func (h *VolumeHandler) Create(c *echo.Context) error {
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
+	}
+
+	// サイズを検証する 
+	if req.SizeMB < config.GetMinVolumeSizeMB() || req.SizeMB > config.GetMaxVolumeSizeMB() {
+		return badRequest(c, "invalid size_mb")
 	}
 
 	volumeID, workflowID, err := h.svc.Create(c.Request().Context(), userID, projectID, req.Name, req.SizeMB, req.StorageClass)
