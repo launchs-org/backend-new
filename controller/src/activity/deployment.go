@@ -2,7 +2,9 @@ package activity
 
 import (
 	"context"
+	"controller/utils"
 	"fmt"
+	"time"
 
 	"launchs/shared/database"
 
@@ -13,11 +15,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const defaultDeploymentTimeout = 10 * time.Minute
+
 // DeploymentActivity は Kubernetes Deployment の作成・更新・削除を担当します。
 type DeploymentActivity struct{}
+// ---- Activity メソッド --------------------------------------------------
 
-// DeploymentApply は Deployment を作成または更新します。
-// 冪等性を担保するため Apply パターンを使います（既存あれば更新）。
+// DeploymentApply は Deployment を作成または更新し、全 Pod が Ready になるまで待機します。
 func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec DeploymentSpec) error {
 	k8s := database.K8sClientset
 	replicas := int32(spec.Replicas)
@@ -25,13 +29,11 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		replicas = 1
 	}
 
-	// 環境変数を k8s 型に変換
 	envVars := make([]corev1.EnvVar, 0, len(spec.EnvVars))
 	for _, e := range spec.EnvVars {
 		envVars = append(envVars, corev1.EnvVar{Name: e.Key, Value: e.Value})
 	}
 
-	// コンテナポートを変換
 	containerPorts := make([]corev1.ContainerPort, 0, len(spec.Ports))
 	for _, p := range spec.Ports {
 		proto := corev1.ProtocolTCP
@@ -44,7 +46,6 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		})
 	}
 
-	// VolumeMounts と Volumes を変換
 	volumeMounts := make([]corev1.VolumeMount, 0, len(spec.VolumeMounts))
 	volumes := make([]corev1.Volume, 0, len(spec.VolumeMounts))
 	for _, vm := range spec.VolumeMounts {
@@ -60,7 +61,6 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		})
 	}
 
-	// リソース制限のデフォルト値
 	cpuReq := orDefault(spec.CPURequest, "100m")
 	cpuLim := orDefault(spec.CPULimit, "500m")
 	memReq := orDefault(spec.MemoryRequest, "128Mi")
@@ -80,9 +80,7 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
@@ -112,29 +110,20 @@ func (a *DeploymentActivity) DeploymentApply(ctx context.Context, spec Deploymen
 		},
 	}
 
-	// 既存の Deployment を取得します
 	existing, err := k8s.AppsV1().Deployments(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
-
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("Deployment 取得エラー: %w", err)
 		}
-
-		_, err = k8s.AppsV1().Deployments(spec.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
-		if err != nil {
-			return fmt.Errorf("Deployment 作成エラー: %w", err)
-		}
-
-		return nil
+		_, err = utils.CreateDeployment(ctx, k8s, deployment, defaultDeploymentTimeout)
+		return err
 	}
 
-	// DB から組み立てた最新 spec で上書き
 	deployment.ResourceVersion = existing.ResourceVersion
-	_, err = k8s.AppsV1().Deployments(spec.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("Deployment 更新エラー: %w", err)
-	}
-	return nil
+
+	// Deployment を更新
+	_, err = utils.UpdateDeployment(ctx, k8s, deployment, defaultDeploymentTimeout)
+	return err
 }
 
 // DeploymentDelete は Deployment を削除します。
@@ -147,7 +136,7 @@ func (a *DeploymentActivity) DeploymentDelete(ctx context.Context, namespace, na
 	return nil
 }
 
-// DeploymentUpdateReplicas は Deployment のレプリカ数を変更します。
+// DeploymentUpdateReplicas は Deployment のレプリカ数を変更し、Pod 数の増減が完了するまで待機します。
 func (a *DeploymentActivity) DeploymentUpdateReplicas(ctx context.Context, namespace, name string, replicas int) error {
 	k8s := database.K8sClientset
 	scale, err := k8s.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
@@ -159,10 +148,10 @@ func (a *DeploymentActivity) DeploymentUpdateReplicas(ctx context.Context, names
 	if err != nil {
 		return fmt.Errorf("Deployment スケール更新エラー: %w", err)
 	}
-	return nil
+	return utils.WaitForDeploymentReady(ctx, k8s, namespace, name, defaultDeploymentTimeout)
 }
 
-// DeploymentRolloutRestart は Deployment の rollout restart を行います（アノテーション更新で再起動を促す）。
+// DeploymentRolloutRestart は Deployment の rollout restart を行い、全 Pod が Ready になるまで待機します。
 func (a *DeploymentActivity) DeploymentRolloutRestart(ctx context.Context, namespace, name string) error {
 	k8s := database.K8sClientset
 	deployment, err := k8s.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -173,14 +162,11 @@ func (a *DeploymentActivity) DeploymentRolloutRestart(ctx context.Context, names
 	if deployment.Spec.Template.Annotations == nil {
 		deployment.Spec.Template.Annotations = map[string]string{}
 	}
-	// kubectl rollout restart と同等の操作: restartedAt アノテーションを更新する
 	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = metav1.Now().UTC().Format("2006-01-02T15:04:05Z")
 
-	_, err = k8s.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("Deployment 再起動アノテーション更新エラー: %w", err)
-	}
-	return nil
+	_, err = utils.UpdateDeployment(ctx, k8s, deployment, defaultDeploymentTimeout)
+	
+	return err
 }
 
 func orDefault(val, def string) string {
