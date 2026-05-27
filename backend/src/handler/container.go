@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"launchs/shared/model"
+	"launchs/shared/config"
 )
 
 // ContainerHandler はコンテナ関連のリクエストを処理します。
@@ -222,6 +223,11 @@ func (h *ContainerHandler) Scale(c *echo.Context) error {
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
+	}
+
+	// レプリカ数を検証する
+	if req.Replicas < config.GetMinReplicas() || req.Replicas > config.GetMaxReplicas() {
+		return badRequest(c, "invalid replicas")
 	}
 
 	workflowID, err := h.svc.Scale(c.Request().Context(), projectID, containerID, req.Replicas)

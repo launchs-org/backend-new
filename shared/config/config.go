@@ -142,3 +142,13 @@ func getEnvInt(key string, defaultVal int) int {
 	}
 	return n
 }
+
+// GetMaxReplicas は最大レプリカ数を返します。
+func GetMaxReplicas() int {
+	return getEnvInt("MAX_REPLICAS", 5)
+}
+
+// GetMinReplicas は最小レプリカ数を返します。
+func GetMinReplicas() int {
+	return getEnvInt("MIN_REPLICAS", 0)
+}
