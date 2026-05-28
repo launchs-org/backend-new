@@ -11,3 +11,6 @@ volume:
   required: false
   mount_path: /data
   default_size_mb: 2048
+ports:
+  - port: 6379
+    protocol: TCP

@@ -7,3 +7,6 @@ icon: server
 color: "#009900"
 image: nginx:1.25-alpine
 env_vars: []
+ports:
+  - port: 80
+    protocol: TCP

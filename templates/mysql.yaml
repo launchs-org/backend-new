@@ -32,4 +32,7 @@ env_vars:
 volume:
   required: false
   mount_path: /var/lib/mysql
-  default_size_mb: 10240
+  default_size_mb: 1024
+ports:
+  - port: 3306
+    protocol: TCP
