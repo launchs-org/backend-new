@@ -47,6 +47,9 @@ type Container struct {
 	// Webhook 自動デプロイ用トークン
 	WebhookToken *string `gorm:"uniqueIndex"`
 
+	// テンプレートから作成されたコンテナかどうか（true の場合ビルドログは非表示）
+	IsTemplate bool `gorm:"not null;default:false"`
+
 	// GitHub ソース情報
 	GitRepo   *string
 	GitBranch *string

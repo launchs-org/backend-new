@@ -307,3 +307,17 @@ func (a *DBActivity) DBUpdateRouteEndpoint(ctx context.Context, routeID uuid.UUI
 	}
 	return nil
 }
+
+// DBCreateVolumeMountRecord はボリュームマウントの DB レコードを作成します。
+func (a *DBActivity) DBCreateVolumeMountRecord(ctx context.Context, containerID, volumeID uuid.UUID, mountPath string) error {
+	mount := &model.VolumeMount{
+		ID:          uuid.New(),
+		VolumeID:    volumeID,
+		ContainerID: containerID,
+		MountPath:   mountPath,
+	}
+	if err := database.DB.WithContext(ctx).Create(mount).Error; err != nil {
+		return fmt.Errorf("ボリュームマウントレコード作成エラー: %w", err)
+	}
+	return nil
+}

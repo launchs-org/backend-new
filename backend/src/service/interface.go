@@ -31,8 +31,10 @@ type TemplateDeployRequest struct {
 	TemplateName string
 	ResourceSize string
 	Params       map[string]string
-	VolumeID     *uuid.UUID
-	MountPath    *string
+	VolumeID     *uuid.UUID // ユーザーが既存ボリュームを指定する場合
+	MountPath    *string    // ユーザーが既存ボリュームを指定する場合のマウントパス
+	CreateVolume bool       // テンプレート定義に基づいてボリュームを自動作成するか
+	VolumeSize   int        // ボリュームサイズ(MB), 0 の場合はテンプレートデフォルト
 }
 
 // EnvVarInput は環境変数の入力値です。

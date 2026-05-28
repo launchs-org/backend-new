@@ -120,6 +120,8 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		Params       map[string]string `json:"params"`
 		VolumeID     *string           `json:"volume_id"`
 		MountPath    *string           `json:"mount_path"`
+		CreateVolume bool              `json:"create_volume"`
+		VolumeSize   int               `json:"volume_size"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
@@ -131,6 +133,8 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		ResourceSize: req.ResourceSize,
 		Params:       req.Params,
 		MountPath:    req.MountPath,
+		CreateVolume: req.CreateVolume,
+		VolumeSize:   req.VolumeSize,
 	}
 	if req.VolumeID != nil {
 		vid, err := uuid.Parse(*req.VolumeID)
@@ -313,6 +317,7 @@ func containerSummaryJSON(c *model.Container) map[string]interface{} {
 		"resource_size":             c.ResourceSize,
 		"active_deploy_workflow_id": c.ActiveDeployWorkflowID,
 		"active_scale_workflow_id":  c.ActiveScaleWorkflowID,
+		"is_template":               c.IsTemplate,
 		"pods":                      pods,
 		"created_at":                c.CreatedAt,
 		"updated_at":                c.UpdatedAt,

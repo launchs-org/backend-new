@@ -67,7 +67,7 @@ func main() {
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, buildJobRepo, snapshotRepo, temporalClient)
 	templateSvc := service.NewTemplateService(templateDir)
-	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, templateSvc, temporalClient)
+	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, routeRepo, templateSvc, temporalClient)
 	envVarSvc := service.NewEnvVarService(projectRepo, containerRepo, envVarRepo)
 	portSvc := service.NewPortService(projectRepo, containerRepo, portRepo)
 	routeSvc := service.NewRouteService(projectRepo, containerRepo, routeRepo, temporalClient)
@@ -135,6 +135,17 @@ func main() {
 	// テンプレート一覧（認証不要）
 	e.GET("/api/v1/templates", templateH.List)
 	e.GET("/api/v1/templates/:template_name", templateH.Get)
+
+	// フロントエンド向け設定値（認証不要）
+	e.GET("/api/v1/config", func(c *echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"data": map[string]interface{}{
+				"max_volume_size_mb": config.GetMaxVolumeSizeMB(),
+				"min_volume_size_mb": config.GetMinVolumeSizeMB(),
+			},
+			"error": nil,
+		})
+	})
 
 	// Webhook 受信（認証不要・トークンで識別）
 	e.POST("/api/v1/webhooks/:token", webhookH.Receive)

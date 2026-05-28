@@ -71,6 +71,7 @@ func main() {
 	w.RegisterWorkflow(workflow.DeleteIngressWorkflow)
 	w.RegisterWorkflow(workflow.DeployProjectWorkflow)
 	w.RegisterWorkflow(workflow.RestoreSnapshotWorkflow)
+	w.RegisterWorkflow(workflow.DeployTemplateWorkflow)
 
 	// ワーカー起動（非ブロッキング）
 	if err := w.Start(); err != nil {

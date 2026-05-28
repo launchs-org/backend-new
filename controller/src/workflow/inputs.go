@@ -141,13 +141,32 @@ type BuildDeployInput struct {
 	ProjectID   uuid.UUID
 }
 
+// VolumeRecordInput はワークフローに渡すボリューム DB レコード情報です。
+type VolumeRecordInput struct {
+	ID     string
+	Name   string
+	SizeMB int
+}
+
+// RouteRecordInput はワークフローに渡す Route DB レコード情報です。
+type RouteRecordInput struct {
+	ID       string
+	Port     int
+	Protocol string
+}
+
 // DeployTemplateInput は DeployTemplateWorkflow への入力です。
 type DeployTemplateInput struct {
-	ContainerID  uuid.UUID
-	ProjectID    string
-	TemplateName string
-	ResourceSize string
-	Params       map[string]string
-	VolumeID     *string
-	MountPath    *string
+	ContainerID     uuid.UUID
+	Namespace       string
+	DeploymentName  string
+	ImageRef        string
+	ResourceSize    string
+	EnvVars         []activity.EnvVar
+	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
+	VolumeRecord         *VolumeRecordInput
+	VolumeMountPath      string
+	// ExistingVolumeMounts は既存ボリュームのマウント情報（PVC 作成不要）
+	ExistingVolumeMounts []activity.VolumeMount
+	RouteRecords    []RouteRecordInput
 }

@@ -92,6 +92,36 @@ type VolumeMountWorkflow struct {
 	MountPath string `json:"MountPath"`
 }
 
+// VolumeRecordWorkflow はワークフローに渡すボリューム DB レコード情報です。
+type VolumeRecordWorkflow struct {
+	ID     string `json:"ID"`
+	Name   string `json:"Name"`
+	SizeMB int    `json:"SizeMB"`
+}
+
+// RouteRecordWorkflow はワークフローに渡す Route DB レコード情報です。
+type RouteRecordWorkflow struct {
+	ID       string `json:"ID"`
+	Port     int    `json:"Port"`
+	Protocol string `json:"Protocol"`
+}
+
+// DeployTemplateWorkflowInput は DeployTemplateWorkflow への入力です。
+type DeployTemplateWorkflowInput struct {
+	ContainerID     string                `json:"ContainerID"`
+	Namespace       string                `json:"Namespace"`
+	DeploymentName  string                `json:"DeploymentName"`
+	ImageRef        string                `json:"ImageRef"`
+	ResourceSize    string                `json:"ResourceSize"`
+	EnvVars         []EnvVarWorkflow      `json:"EnvVars"`
+	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
+	VolumeRecord    *VolumeRecordWorkflow `json:"VolumeRecord"`
+	VolumeMountPath string                `json:"VolumeMountPath"`
+	// ExistingVolumeMounts は既存ボリュームのマウント情報（PVC 作成不要）
+	ExistingVolumeMounts []VolumeMountWorkflow `json:"ExistingVolumeMounts"`
+	RouteRecords    []RouteRecordWorkflow `json:"RouteRecords"`
+}
+
 type containerService struct {
 	projectRepo   repository.ProjectRepository
 	containerRepo repository.ContainerRepository
@@ -99,6 +129,7 @@ type containerService struct {
 	portRepo      repository.PortRepository
 	buildJobRepo  repository.BuildJobRepository
 	volumeRepo    repository.VolumeRepository
+	routeRepo     repository.NetworkRouteRepository
 	templateSvc   TemplateService
 	temporal      client.Client
 }
@@ -111,6 +142,7 @@ func NewContainerService(
 	portRepo repository.PortRepository,
 	buildJobRepo repository.BuildJobRepository,
 	volumeRepo repository.VolumeRepository,
+	routeRepo repository.NetworkRouteRepository,
 	templateSvc TemplateService,
 	temporalClient client.Client,
 ) ContainerService {
@@ -121,6 +153,7 @@ func NewContainerService(
 		portRepo:      portRepo,
 		buildJobRepo:  buildJobRepo,
 		volumeRepo:    volumeRepo,
+		routeRepo:     routeRepo,
 		templateSvc:   templateSvc,
 		temporal:      temporalClient,
 	}
@@ -294,63 +327,126 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		Status:       model.ContainerStatusPending,
 		Replicas:     1,
 		ResourceSize: resourceSize,
+		IsTemplate:   true,
 	}
 	if err := s.containerRepo.Create(ctx, container); err != nil {
 		return nil, "", fmt.Errorf("failed to create container: %w", err)
 	}
 
-	// 環境変数をテンプレートデフォルト + ユーザー指定で組み立て
+	// 環境変数をテンプレートデフォルト + ユーザー指定 + auto_generate で組み立て
 	envVars := make([]EnvVarWorkflow, 0, len(tmpl.EnvVars))
 	for _, ev := range tmpl.EnvVars {
 		val := ev.Default
 		if v, ok := req.Params[ev.Key]; ok && v != "" {
 			val = v
+		} else if ev.AutoGenerate && val == "" {
+			if generated, genErr := generateToken(12); genErr == nil {
+				val = generated
+			}
 		}
 		envVars = append(envVars, EnvVarWorkflow{Key: ev.Key, Value: val})
 	}
 
-	// ボリュームマウント
-	volumeMounts := make([]VolumeMountWorkflow, 0)
-	if req.VolumeID != nil && req.MountPath != nil {
-		mountPath := *req.MountPath
-		if mountPath == "" && tmpl.Volume != nil {
-			mountPath = tmpl.Volume.MountPath
+	// ボリューム DB レコードを作成（ワークフローが PVC を実際に作成する）
+	var volumeRecord *VolumeRecordWorkflow
+	volumeMountPath := ""
+	if req.CreateVolume && tmpl.Volume != nil {
+		sizeMB := req.VolumeSize
+		if sizeMB == 0 {
+			sizeMB = tmpl.Volume.DefaultSizeMB
 		}
-		// VolumeのDB情報からPVC名を取得
-		vol, volErr := s.volumeRepo.FindByID(ctx, *req.VolumeID)
-		if volErr == nil {
-			pvcName := fmt.Sprintf("%s-%s", vol.Name, req.VolumeID.String())
-			volumeMounts = append(volumeMounts, VolumeMountWorkflow{PVCName: pvcName, MountPath: mountPath})
+		volName := fmt.Sprintf("%s-data", req.Name)
+		vol := &model.Volume{
+			ID:           uuid.New(),
+			ProjectID:    projectID,
+			Name:         volName,
+			SizeMB:       sizeMB,
+			StorageClass: "default",
+			Status:       model.VolumeStatusPending,
+		}
+		if err := s.volumeRepo.Create(ctx, vol); err != nil {
+			fmt.Printf("[warn] failed to create volume record: %v\n", err)
+		} else {
+			volumeRecord = &VolumeRecordWorkflow{
+				ID:     vol.ID.String(),
+				Name:   vol.Name,
+				SizeMB: vol.SizeMB,
+			}
+			volumeMountPath = tmpl.Volume.MountPath
 		}
 	}
 
-	// テンプレートの env vars と接続情報をプロジェクト環境変数として自動登録する。
-	// コンテナ名をサービスホスト名として使い、接頭辞付きで登録する。
+	// ユーザーが既存ボリュームを指定した場合は PVC 作成不要（ExistingVolumeMounts に入れる）
+	existingVolumeMounts := make([]VolumeMountWorkflow, 0)
+	if req.VolumeID != nil {
+		mountPath := ""
+		if req.MountPath != nil {
+			mountPath = *req.MountPath
+		}
+		if mountPath == "" && tmpl.Volume != nil {
+			mountPath = tmpl.Volume.MountPath
+		}
+		vol, volErr := s.volumeRepo.FindByID(ctx, *req.VolumeID)
+		if volErr == nil {
+			pvcName := fmt.Sprintf("%s-%s", vol.Name, vol.ID.String())
+			existingVolumeMounts = append(existingVolumeMounts, VolumeMountWorkflow{
+				PVCName:   pvcName,
+				MountPath: mountPath,
+			})
+		}
+	}
+
+	// Service 用 Route DB レコードを作成（ワークフローが K8s Service を実際に作成する）
+	routeRecords := make([]RouteRecordWorkflow, 0, len(tmpl.Ports))
+	for _, p := range tmpl.Ports {
+		protocol := p.Protocol
+		if protocol == "" {
+			protocol = "TCP"
+		}
+		route := &model.NetworkRoute{
+			ID:          uuid.New(),
+			ContainerID: containerID,
+			Type:        string(model.NetworkRouteTypeService),
+			Port:        p.Port,
+			Protocol:    protocol,
+		}
+		if err := s.routeRepo.Create(ctx, route); err != nil {
+			fmt.Printf("[warn] failed to create route record (port=%d): %v\n", p.Port, err)
+			continue
+		}
+		routeRecords = append(routeRecords, RouteRecordWorkflow{
+			ID:       route.ID.String(),
+			Port:     route.Port,
+			Protocol: route.Protocol,
+		})
+	}
+
+	// テンプレートの env vars と接続情報をプロジェクト環境変数として自動登録する
 	if err := s.injectTemplateProjectEnvVars(ctx, projectID, req.Name, tmpl.EnvVars, envVars); err != nil {
-		// 失敗しても deploy 自体は止めない（警告のみ）
 		fmt.Printf("[warn] failed to inject template project env vars: %v\n", err)
 	}
 
 	deploymentName := fmt.Sprintf("%s-%s", container.Name, containerID.String())
-	input := DeployWorkflowInput{
-		ContainerID:    containerID.String(),
-		Namespace:      project.Namespace,
-		DeploymentName: deploymentName,
-		ImageRef:       tmpl.Image,
-		Replicas:       1,
-		ResourceSize:   resourceSize,
-		EnvVars:        envVars,
-		Ports:          []PortWorkflow{},
-		VolumeMounts:   volumeMounts,
+	input := DeployTemplateWorkflowInput{
+		ContainerID:          containerID.String(),
+		Namespace:            project.Namespace,
+		DeploymentName:       deploymentName,
+		ImageRef:             tmpl.Image,
+		ResourceSize:         resourceSize,
+		EnvVars:              envVars,
+		VolumeRecord:         volumeRecord,
+		VolumeMountPath:      volumeMountPath,
+		ExistingVolumeMounts: existingVolumeMounts,
+		RouteRecords:         routeRecords,
 	}
 
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("deploy-template-%s", containerID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
-	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeploy, input)
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeployTemplate, input)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to start DeployWorkflow: %w", err)
+		return nil, "", fmt.Errorf("failed to start DeployTemplateWorkflow: %w", err)
 	}
 
 	workflowID := we.GetID()

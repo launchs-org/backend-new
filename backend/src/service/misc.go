@@ -250,6 +250,7 @@ func (s *templateService) Get(ctx context.Context, name string) (*TemplateDetail
 		Image:   tf.Image,
 		EnvVars: tf.EnvVars,
 		Volume:  tf.Volume,
+		Ports:   tf.Ports,
 	}, nil
 }
 
