@@ -117,6 +117,7 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		Name         string            `json:"name"`
 		TemplateName string            `json:"template_name"`
 		ResourceSize string            `json:"resource_size"`
+		Replicas     int               `json:"replicas"`
 		Params       map[string]string `json:"params"`
 		VolumeID     *string           `json:"volume_id"`
 		MountPath    *string           `json:"mount_path"`
@@ -131,6 +132,7 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		Name:         req.Name,
 		TemplateName: req.TemplateName,
 		ResourceSize: req.ResourceSize,
+		Replicas:     req.Replicas,
 		Params:       req.Params,
 		MountPath:    req.MountPath,
 		CreateVolume: req.CreateVolume,

@@ -95,11 +95,16 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 		ports = append(ports, activity.Port{Port: r.Port, Protocol: r.Protocol})
 	}
 
+	replicas := input.Replicas
+	if replicas <= 0 {
+		replicas = 1
+	}
+
 	spec := activity.DeploymentSpec{
 		Namespace:     input.Namespace,
 		Name:          input.DeploymentName,
 		Image:         input.ImageRef,
-		Replicas:      1,
+		Replicas:      replicas,
 		CPURequest:    size.CPURequest,
 		CPULimit:      size.CPULimit,
 		MemoryRequest: size.MemoryRequest,

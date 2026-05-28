@@ -29,6 +29,9 @@ env_vars:
     auto_generate: true
     generate_type: password
     default: ""
+spec:
+  resource_size: medium
+  replicas: 1
 volume:
   required: false
   mount_path: /var/lib/mysql

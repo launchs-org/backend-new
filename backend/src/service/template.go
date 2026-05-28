@@ -34,6 +34,12 @@ type TemplatePortDef struct {
 	Protocol string `json:"protocol" yaml:"protocol"`
 }
 
+// TemplateSpecDef はテンプレートのデフォルトデプロイスペックです。
+type TemplateSpecDef struct {
+	ResourceSize string `json:"resource_size" yaml:"resource_size"`
+	Replicas     int    `json:"replicas" yaml:"replicas"`
+}
+
 // TemplateDetail はテンプレートの詳細情報です。
 type TemplateDetail struct {
 	TemplateSummary
@@ -41,6 +47,7 @@ type TemplateDetail struct {
 	EnvVars []TemplateEnvVarDef `json:"env_vars"`
 	Volume  *TemplateVolumeDef  `json:"volume"`
 	Ports   []TemplatePortDef   `json:"ports"`
+	Spec    *TemplateSpecDef    `json:"spec"`
 }
 
 // TemplateFile は git submodule のテンプレート YAML の構造です。
@@ -56,4 +63,5 @@ type TemplateFile struct {
 	EnvVars     []TemplateEnvVarDef `yaml:"env_vars"`
 	Volume      *TemplateVolumeDef  `yaml:"volume"`
 	Ports       []TemplatePortDef   `yaml:"ports"`
+	Spec        *TemplateSpecDef    `yaml:"spec"`
 }

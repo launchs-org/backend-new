@@ -7,6 +7,9 @@ icon: zap
 color: "#DC382D"
 image: redis:7-alpine
 env_vars: []
+spec:
+  resource_size: medium
+  replicas: 1
 volume:
   required: false
   mount_path: /data

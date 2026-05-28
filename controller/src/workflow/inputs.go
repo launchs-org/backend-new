@@ -162,6 +162,7 @@ type DeployTemplateInput struct {
 	DeploymentName  string
 	ImageRef        string
 	ResourceSize    string
+	Replicas        int
 	EnvVars         []activity.EnvVar
 	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
 	VolumeRecord         *VolumeRecordInput

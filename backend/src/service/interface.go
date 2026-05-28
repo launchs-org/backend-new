@@ -29,7 +29,8 @@ type BuildDeployRequest struct {
 type TemplateDeployRequest struct {
 	Name         string
 	TemplateName string
-	ResourceSize string
+	ResourceSize string // 空の場合はテンプレート YAML の spec.resource_size を使用
+	Replicas     int    // 0 の場合はテンプレート YAML の spec.replicas を使用
 	Params       map[string]string
 	VolumeID     *uuid.UUID // ユーザーが既存ボリュームを指定する場合
 	MountPath    *string    // ユーザーが既存ボリュームを指定する場合のマウントパス

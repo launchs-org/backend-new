@@ -251,6 +251,7 @@ func (s *templateService) Get(ctx context.Context, name string) (*TemplateDetail
 		EnvVars: tf.EnvVars,
 		Volume:  tf.Volume,
 		Ports:   tf.Ports,
+		Spec:    tf.Spec,
 	}, nil
 }
 

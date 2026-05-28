@@ -6,6 +6,9 @@ version: "1.25"
 icon: server
 color: "#009900"
 image: nginx:1.25-alpine
+spec:
+  resource_size: small
+  replicas: 1
 env_vars: []
 ports:
   - port: 80
