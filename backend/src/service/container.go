@@ -113,6 +113,7 @@ type DeployTemplateWorkflowInput struct {
 	DeploymentName  string                `json:"DeploymentName"`
 	ImageRef        string                `json:"ImageRef"`
 	ResourceSize    string                `json:"ResourceSize"`
+	Replicas        int                   `json:"Replicas"`
 	EnvVars         []EnvVarWorkflow      `json:"EnvVars"`
 	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
 	VolumeRecord    *VolumeRecordWorkflow `json:"VolumeRecord"`
@@ -315,9 +316,22 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 	}
 
 	containerID := uuid.New()
+
+	// resource_size と replicas はリクエスト値を優先し、未指定ならテンプレート YAML の spec 値を使用
 	resourceSize := req.ResourceSize
+	if resourceSize == "" && tmpl.Spec != nil && tmpl.Spec.ResourceSize != "" {
+		resourceSize = tmpl.Spec.ResourceSize
+	}
 	if resourceSize == "" {
 		resourceSize = "small"
+	}
+
+	replicas := req.Replicas
+	if replicas <= 0 && tmpl.Spec != nil && tmpl.Spec.Replicas > 0 {
+		replicas = tmpl.Spec.Replicas
+	}
+	if replicas <= 0 {
+		replicas = 1
 	}
 
 	container := &model.Container{
@@ -325,7 +339,7 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		ProjectID:    projectID,
 		Name:         req.Name,
 		Status:       model.ContainerStatusPending,
-		Replicas:     1,
+		Replicas:     replicas,
 		ResourceSize: resourceSize,
 		IsTemplate:   true,
 	}
@@ -426,13 +440,13 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		fmt.Printf("[warn] failed to inject template project env vars: %v\n", err)
 	}
 
-	deploymentName := fmt.Sprintf("%s-%s", container.Name, containerID.String())
 	input := DeployTemplateWorkflowInput{
 		ContainerID:          containerID.String(),
 		Namespace:            project.Namespace,
-		DeploymentName:       deploymentName,
+		DeploymentName:       model.GetDeploymentName(containerID),
 		ImageRef:             tmpl.Image,
 		ResourceSize:         resourceSize,
+		Replicas:             replicas,
 		EnvVars:              envVars,
 		VolumeRecord:         volumeRecord,
 		VolumeMountPath:      volumeMountPath,
