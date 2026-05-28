@@ -69,6 +69,19 @@ tasks:
     cmds:
       - docker compose {{.COMPOSE_ALL}} down
     silent: true
+  
+  stop:
+    desc: "全サービスを一時停止"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} stop
+    silent: true
+  
+  start:
+    desc: "全サービスを再開"
+    cmds:
+      - docker compose {{.COMPOSE_ALL}} start
+    silent: true
+
 
   down-app:
     desc: "アプリのみ停止"

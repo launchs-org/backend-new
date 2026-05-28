@@ -106,6 +106,22 @@ func CollectorRestartDelaySec() int {
 	return getEnvInt("COLLECTOR_RESTART_DELAY_SEC", 5)
 }
 
+// LogHealthCheckIntervalSec はログコレクターのヘルスチェック間隔（秒）を返します。
+func LogHealthCheckIntervalSec() int {
+	return getEnvInt("LOG_HEALTH_CHECK_INTERVAL_SEC", 30)
+}
+
+// LogStaleThresholdSec はログストリームが停止していると判断するしきい値（秒）を返します。
+func LogStaleThresholdSec() int {
+	return getEnvInt("LOG_STALE_THRESHOLD_SEC", 300)
+}
+
+// LogMaxRestartAttempts はログコレクターが連続失敗した際にプロセス終了するまでの試行回数を返します。
+// 0 は無制限を意味します。
+func LogMaxRestartAttempts() int {
+	return getEnvInt("LOG_MAX_RESTART_ATTEMPTS", 5)
+}
+
 // LeaderLeaseTTLSec はリーダーシップの有効期間（秒）を返します。
 // この時間内にハートビートが更新されなければ、他の Pod がリーダーを取得できます。
 func LeaderLeaseTTLSec() int {

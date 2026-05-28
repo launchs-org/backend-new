@@ -58,24 +58,25 @@ func runCollectors(ctx context.Context, restartDelay time.Duration) error {
 	logCollector := collector.NewLogCollector()
 	metricCollector := collector.NewMetricCollector()
 
+	maxLogAttempts := config.LogMaxRestartAttempts()
 	done := make(chan struct{}, 3)
 
 	go func() {
-		runWithRestart(ctx, "status", restartDelay, func() error {
+		runWithRestart(ctx, "status", restartDelay, 0, func() error {
 			return statusCollector.Run(ctx)
 		})
 		done <- struct{}{}
 	}()
 
 	go func() {
-		runWithRestart(ctx, "log", restartDelay, func() error {
+		runWithRestart(ctx, "log", restartDelay, maxLogAttempts, func() error {
 			return logCollector.Run(ctx)
 		})
 		done <- struct{}{}
 	}()
 
 	go func() {
-		runWithRestart(ctx, "metric", restartDelay, func() error {
+		runWithRestart(ctx, "metric", restartDelay, 0, func() error {
 			return metricCollector.Run(ctx)
 		})
 		done <- struct{}{}
@@ -105,8 +106,10 @@ func resolvePodID() string {
 }
 
 // runWithRestart はコレクター関数をエラー終了時に restartDelay 後に再起動します。
+// maxAttempts > 0 の場合、連続失敗回数がその値に達するとプロセスを終了します（Kubernetes による Pod 再起動を促す）。
+// maxAttempts == 0 の場合は無制限に再起動します。
 // context がキャンセルされた場合はループを終了します。
-func runWithRestart(ctx context.Context, name string, restartDelay time.Duration, fn func() error) {
+func runWithRestart(ctx context.Context, name string, restartDelay time.Duration, maxAttempts int, fn func() error) {
 	attempt := 0
 	for {
 		attempt++
@@ -114,6 +117,12 @@ func runWithRestart(ctx context.Context, name string, restartDelay time.Duration
 
 		if err := fn(); err != nil {
 			fmt.Printf("[watcher] %s collector がエラーで終了しました（attempt=%d）: %v\n", name, attempt, err)
+
+			if maxAttempts > 0 && attempt >= maxAttempts {
+				fmt.Printf("[watcher] %s collector が %d 回連続で失敗しました。プロセスを終了します\n", name, attempt)
+				os.Exit(1)
+			}
+
 			fmt.Printf("[watcher] %s collector を %s 後に再起動します\n", name, restartDelay)
 		} else {
 			fmt.Printf("[watcher] %s collector が正常終了しました（ctx キャンセル）\n", name)
