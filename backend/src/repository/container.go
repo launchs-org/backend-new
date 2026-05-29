@@ -94,6 +94,31 @@ func (r *containerRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&model.Container{}, "id = ?", id).Error
 }
 
+// CountByUserIDPerResourceSize はユーザーの全プロジェクトにわたるリソースサイズ別コンテナ数を返します。
+// status が "stopped" または "failed" のコンテナは除外します。
+func (r *containerRepository) CountByUserIDPerResourceSize(ctx context.Context, userID string) (map[string]int, error) {
+	type result struct {
+		ResourceSize string
+		Count        int
+	}
+	var rows []result
+	err := r.db.WithContext(ctx).
+		Model(&model.Container{}).
+		Select("containers.resource_size, count(*) as count").
+		Joins("JOIN projects ON projects.id = containers.project_id").
+		Where("projects.user_id = ? AND containers.status NOT IN ?", userID, []string{"stopped", "failed"}).
+		Group("containers.resource_size").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{"small": 0, "medium": 0, "large": 0}
+	for _, row := range rows {
+		counts[row.ResourceSize] = row.Count
+	}
+	return counts, nil
+}
+
 // DeleteRelated はコンテナに紐づく全関連レコードを外部キー制約順に削除します。
 func (r *containerRepository) DeleteRelated(ctx context.Context, id uuid.UUID) error {
 	tables := []interface{}{

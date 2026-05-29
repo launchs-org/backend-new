@@ -41,6 +41,15 @@ type ContainerRepository interface {
 	Update(ctx context.Context, container *model.Container) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	DeleteRelated(ctx context.Context, id uuid.UUID) error
+	// CountByUserIDPerResourceSize はユーザーの全プロジェクトにわたるリソースサイズ別コンテナ数を返します。
+	// 削除済み・停止済みコンテナは含みません。
+	CountByUserIDPerResourceSize(ctx context.Context, userID string) (map[string]int, error)
+}
+
+// UserQuotaRepository はユーザーごとのリソースクォータを管理します。
+type UserQuotaRepository interface {
+	FindByUserID(ctx context.Context, userID string) (*model.UserQuota, error)
+	Upsert(ctx context.Context, quota *model.UserQuota) error
 }
 
 // ContainerStatusHistoryRepository はステータス履歴の INSERT と古いレコードの削除を抽象化します。
