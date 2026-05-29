@@ -51,3 +51,14 @@ type ValidationError struct {
 func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation error: %s - %s", e.Field, e.Message)
 }
+
+// QuotaExceededError はユーザーのリソースクォータ上限を超えたときに返します（HTTP 429）。
+type QuotaExceededError struct {
+	ResourceSize string
+	Current      int
+	Max          int
+}
+
+func (e *QuotaExceededError) Error() string {
+	return fmt.Sprintf("quota exceeded for resource size %s: current=%d, max=%d", e.ResourceSize, e.Current, e.Max)
+}

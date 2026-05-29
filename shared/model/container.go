@@ -50,6 +50,10 @@ type Container struct {
 	// テンプレートから作成されたコンテナかどうか（true の場合ビルドログは非表示）
 	IsTemplate bool `gorm:"not null;default:false"`
 
+	// Dockerイメージを直接指定してデプロイしたコンテナかどうか（true の場合ビルドログは非表示）
+	IsImageDeploy bool    `gorm:"not null;default:false"`
+	ImageRef      *string // 直接デプロイ時のイメージ参照（例: nginx:latest）
+
 	// GitHub ソース情報
 	GitRepo   *string
 	GitBranch *string

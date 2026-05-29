@@ -178,3 +178,23 @@ func GetMinVolumeSizeMB() int {
 func GetMaxVolumeSizeMB() int {
 	return getEnvInt("MAX_VOLUME_SIZE_MB", 3000)
 }
+
+// DefaultQuotaSmall はユーザーごとのデフォルト small コンテナ上限数を返します。
+func DefaultQuotaSmall() int {
+	return getEnvInt("DEFAULT_QUOTA_SMALL", 5)
+}
+
+// DefaultQuotaMedium はユーザーごとのデフォルト medium コンテナ上限数を返します。
+func DefaultQuotaMedium() int {
+	return getEnvInt("DEFAULT_QUOTA_MEDIUM", 3)
+}
+
+// DefaultQuotaLarge はユーザーごとのデフォルト large コンテナ上限数を返します。
+func DefaultQuotaLarge() int {
+	return getEnvInt("DEFAULT_QUOTA_LARGE", 1)
+}
+
+// AdminAPIKey は管理者API認証キーを返します。
+func AdminAPIKey() string {
+	return getEnv("ADMIN_API_KEY", "")
+}
