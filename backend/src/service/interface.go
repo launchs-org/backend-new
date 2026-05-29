@@ -25,6 +25,16 @@ type BuildDeployRequest struct {
 	Ports        []PortInput
 }
 
+// ImageDeployRequest は Docker イメージを直接指定してデプロイするリクエスト情報です。
+type ImageDeployRequest struct {
+	Name         string
+	Image        string
+	ResourceSize string
+	Replicas     int
+	EnvVars      []EnvVarInput
+	Ports        []PortInput
+}
+
 // TemplateDeployRequest はテンプレートからのコンテナ作成リクエスト情報です。
 type TemplateDeployRequest struct {
 	Name         string
@@ -66,12 +76,13 @@ type ProjectService interface {
 type ContainerService interface {
 	List(ctx context.Context, projectID uuid.UUID) ([]model.Container, error)
 	Get(ctx context.Context, projectID, containerID uuid.UUID) (*model.Container, error)
-	BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (container *model.Container, workflowID string, err error)
-	DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (container *model.Container, workflowID string, err error)
+	BuildDeploy(ctx context.Context, projectID uuid.UUID, userID string, req BuildDeployRequest) (container *model.Container, workflowID string, err error)
+	DeployImage(ctx context.Context, projectID uuid.UUID, userID string, req ImageDeployRequest) (container *model.Container, workflowID string, err error)
+	DeployFromTemplate(ctx context.Context, projectID uuid.UUID, userID string, req TemplateDeployRequest) (container *model.Container, workflowID string, err error)
 	Scale(ctx context.Context, projectID, containerID uuid.UUID, replicas int) (workflowID string, err error)
 	Redeploy(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
 	Delete(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
-	Update(ctx context.Context, projectID, containerID uuid.UUID, resourceSize string) error
+	Update(ctx context.Context, projectID, containerID uuid.UUID, userID, resourceSize string) error
 	Rebuild(ctx context.Context, projectID, containerID uuid.UUID) (workflowID string, err error)
 	CreateWebhook(ctx context.Context, projectID, containerID uuid.UUID) (webhookURL, token string, err error)
 	HandleWebhook(ctx context.Context, token string) error

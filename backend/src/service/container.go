@@ -132,6 +132,7 @@ type containerService struct {
 	volumeRepo    repository.VolumeRepository
 	routeRepo     repository.NetworkRouteRepository
 	templateSvc   TemplateService
+	quotaSvc      QuotaService
 	temporal      client.Client
 }
 
@@ -145,6 +146,7 @@ func NewContainerService(
 	volumeRepo repository.VolumeRepository,
 	routeRepo repository.NetworkRouteRepository,
 	templateSvc TemplateService,
+	quotaSvc QuotaService,
 	temporalClient client.Client,
 ) ContainerService {
 	return &containerService{
@@ -156,8 +158,98 @@ func NewContainerService(
 		volumeRepo:    volumeRepo,
 		routeRepo:     routeRepo,
 		templateSvc:   templateSvc,
+		quotaSvc:      quotaSvc,
 		temporal:      temporalClient,
 	}
+}
+
+func (s *containerService) DeployImage(ctx context.Context, projectID uuid.UUID, userID string, req ImageDeployRequest) (*model.Container, string, error) {
+	resourceSize := req.ResourceSize
+	if resourceSize == "" {
+		resourceSize = "small"
+	}
+	if err := s.quotaSvc.CheckQuota(ctx, userID, resourceSize); err != nil {
+		return nil, "", err
+	}
+
+	project, err := s.projectRepo.FindByID(ctx, projectID)
+	if err != nil {
+		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
+	}
+
+	containerID := uuid.New()
+
+	replicas := req.Replicas
+	if replicas <= 0 {
+		replicas = 1
+	}
+
+	imageRef := req.Image
+	container := &model.Container{
+		ID:            containerID,
+		ProjectID:     projectID,
+		Name:          req.Name,
+		Status:        model.ContainerStatusPending,
+		Replicas:      replicas,
+		ResourceSize:  resourceSize,
+		IsImageDeploy: true,
+		ImageRef:      &imageRef,
+	}
+	if err := s.containerRepo.Create(ctx, container); err != nil {
+		return nil, "", fmt.Errorf("failed to create container: %w", err)
+	}
+
+	if len(req.EnvVars) > 0 {
+		envVars := make([]model.ContainerEnvVar, len(req.EnvVars))
+		for i, v := range req.EnvVars {
+			envVars[i] = model.ContainerEnvVar{
+				ID:          uuid.New(),
+				ContainerID: containerID,
+				Key:         v.Key,
+				Value:       v.Value,
+			}
+		}
+		if err := s.envVarRepo.UpsertContainerEnvVars(ctx, containerID, envVars); err != nil {
+			return nil, "", fmt.Errorf("failed to save env vars: %w", err)
+		}
+	}
+
+	if len(req.Ports) > 0 {
+		for _, p := range req.Ports {
+			port := &model.Port{
+				ID:          uuid.New(),
+				ContainerID: containerID,
+				Port:        p.Port,
+				Protocol:    p.Protocol,
+			}
+			if err := s.portRepo.Create(ctx, port); err != nil {
+				return nil, "", fmt.Errorf("failed to save port: %w", err)
+			}
+		}
+	}
+
+	wfOpts := client.StartWorkflowOptions{
+		ID:        fmt.Sprintf("deploy-image-%s", containerID.String()),
+		TaskQueue: temporal.ControllerQueue,
+	}
+	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeploy, DeployWorkflowInput{
+		ContainerID:    containerID.String(),
+		Namespace:      project.Namespace,
+		DeploymentName: model.GetDeploymentName(containerID),
+		ImageRef:       req.Image,
+		Replicas:       replicas,
+		ResourceSize:   resourceSize,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to start DeployWorkflow: %w", err)
+	}
+
+	workflowID := we.GetID()
+	if err := s.containerRepo.UpdateActiveDeployWorkflowID(ctx, containerID, &workflowID); err != nil {
+		return nil, "", fmt.Errorf("failed to update workflow id: %w", err)
+	}
+
+	return container, workflowID, nil
 }
 
 func (s *containerService) List(ctx context.Context, projectID uuid.UUID) ([]model.Container, error) {
@@ -175,7 +267,15 @@ func (s *containerService) Get(ctx context.Context, projectID, containerID uuid.
 	return container, nil
 }
 
-func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID, req BuildDeployRequest) (*model.Container, string, error) {
+func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID, userID string, req BuildDeployRequest) (*model.Container, string, error) {
+	resourceSize := req.ResourceSize
+	if resourceSize == "" {
+		resourceSize = "small"
+	}
+	if err := s.quotaSvc.CheckQuota(ctx, userID, resourceSize); err != nil {
+		return nil, "", err
+	}
+
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
 		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
@@ -188,12 +288,6 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 
 	// コンテナを作成します
 	containerID := uuid.New()
-
-	// リソースサイズを決めます
-	resourceSize := req.ResourceSize
-	if resourceSize == "" {
-		resourceSize = "small"
-	}
 
 	// リプリカ数を決めます
 	replicas := req.Replicas
@@ -304,7 +398,7 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 	return container, workflowID, nil
 }
 
-func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uuid.UUID, req TemplateDeployRequest) (*model.Container, string, error) {
+func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uuid.UUID, userID string, req TemplateDeployRequest) (*model.Container, string, error) {
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
 		return nil, "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
@@ -324,6 +418,10 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 	}
 	if resourceSize == "" {
 		resourceSize = "small"
+	}
+
+	if err := s.quotaSvc.CheckQuota(ctx, userID, resourceSize); err != nil {
+		return nil, "", err
 	}
 
 	replicas := req.Replicas
@@ -492,7 +590,7 @@ func (s *containerService) Scale(ctx context.Context, projectID, containerID uui
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowScale, ScaleWorkflowInput{
 		ContainerID:    containerID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", "container", containerID.String()),
+		DeploymentName: model.GetDeploymentName(containerID),
 		Replicas:       replicas,
 	})
 	if err != nil {
@@ -528,7 +626,7 @@ func (s *containerService) Redeploy(ctx context.Context, projectID, containerID 
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    containerID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", "container", containerID.String()),
+		DeploymentName: model.GetDeploymentName(containerID),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start RedeployWorkflow: %w", err)
@@ -659,7 +757,7 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		ContainerID:    containerID.String(),
 		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", "container", containerID.String()),
+		DeploymentName: model.GetDeploymentName(containerID),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start DeleteContainerWorkflow: %w", err)
@@ -668,13 +766,17 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 	return we.GetID(), nil
 }
 
-func (s *containerService) Update(ctx context.Context, projectID, containerID uuid.UUID, resourceSize string) error {
+func (s *containerService) Update(ctx context.Context, projectID, containerID uuid.UUID, userID, resourceSize string) error {
 	container, err := s.containerRepo.FindByID(ctx, containerID)
 	if err != nil {
 		return &apperrors.NotFoundError{Resource: "container", ID: containerID.String()}
 	}
 	if container.ProjectID != projectID {
 		return &apperrors.ForbiddenError{Message: "access denied"}
+	}
+
+	if err := s.quotaSvc.CheckQuotaForUpdate(ctx, userID, container.ResourceSize, resourceSize); err != nil {
+		return err
 	}
 
 	container.ResourceSize = resourceSize
@@ -721,7 +823,7 @@ func (s *containerService) HandleWebhook(ctx context.Context, token string) erro
 	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    container.ID.String(),
 		Namespace:      project.Namespace,
-		DeploymentName: fmt.Sprintf("%s-%s", "container", container.ID.String()),
+		DeploymentName: model.GetDeploymentName(container.ID),
 	})
 	return err
 }
