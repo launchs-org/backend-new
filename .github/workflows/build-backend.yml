@@ -44,6 +44,7 @@ jobs:
           file: backend/dockerfile
           build-contexts: |
             shared=./shared
+            templates=./templates
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
