@@ -63,6 +63,7 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 	if err != nil {
 		return badRequest(c, "invalid project_id")
 	}
+	userID := c.Get("UserID").(string)
 
 	var req struct {
 		Name         string            `json:"name"`
@@ -88,7 +89,7 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 		ports[i] = service.PortInput{Port: p.Port, Protocol: p.Protocol}
 	}
 
-	container, workflowID, err := h.svc.BuildDeploy(c.Request().Context(), projectID, service.BuildDeployRequest{
+	container, workflowID, err := h.svc.BuildDeploy(c.Request().Context(), projectID, userID, service.BuildDeployRequest{
 		Name:         req.Name,
 		GitRepo:      req.GitRepo,
 		GitBranch:    req.GitBranch,
@@ -107,11 +108,59 @@ func (h *ContainerHandler) BuildDeploy(c *echo.Context) error {
 	return response.Created(c, containerSummaryJSON(container))
 }
 
+func (h *ContainerHandler) DeployImage(c *echo.Context) error {
+	projectID, err := uuid.Parse(c.Param("project_id"))
+	if err != nil {
+		return badRequest(c, "invalid project_id")
+	}
+	userID := c.Get("UserID").(string)
+
+	var req struct {
+		Name         string            `json:"name"`
+		Image        string            `json:"image"`
+		ResourceSize string            `json:"resource_size"`
+		Replicas     int               `json:"replicas"`
+		EnvVars      []envVarInputJSON `json:"env_vars"`
+		Ports        []portInputJSON   `json:"ports"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, err.Error())
+	}
+	if req.Name == "" || req.Image == "" {
+		return badRequest(c, "name and image are required")
+	}
+
+	envVars := make([]service.EnvVarInput, len(req.EnvVars))
+	for i, v := range req.EnvVars {
+		envVars[i] = service.EnvVarInput{Key: v.Key, Value: v.Value}
+	}
+	ports := make([]service.PortInput, len(req.Ports))
+	for i, p := range req.Ports {
+		ports[i] = service.PortInput{Port: p.Port, Protocol: p.Protocol}
+	}
+
+	container, workflowID, err := h.svc.DeployImage(c.Request().Context(), projectID, userID, service.ImageDeployRequest{
+		Name:         req.Name,
+		Image:        req.Image,
+		ResourceSize: req.ResourceSize,
+		Replicas:     req.Replicas,
+		EnvVars:      envVars,
+		Ports:        ports,
+	})
+	if err != nil {
+		return response.Error(c, err)
+	}
+	_ = workflowID
+
+	return response.Created(c, containerSummaryJSON(container))
+}
+
 func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 	projectID, err := uuid.Parse(c.Param("project_id"))
 	if err != nil {
 		return badRequest(c, "invalid project_id")
 	}
+	userID := c.Get("UserID").(string)
 
 	var req struct {
 		Name         string            `json:"name"`
@@ -146,7 +195,7 @@ func (h *ContainerHandler) FromTemplate(c *echo.Context) error {
 		treq.VolumeID = &vid
 	}
 
-	container, workflowID, err := h.svc.DeployFromTemplate(c.Request().Context(), projectID, treq)
+	container, workflowID, err := h.svc.DeployFromTemplate(c.Request().Context(), projectID, userID, treq)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -165,7 +214,6 @@ func (h *ContainerHandler) Update(c *echo.Context) error {
 		return badRequest(c, "invalid container_id")
 	}
 	userID := c.Get("UserID").(string)
-	_ = userID
 
 	var req struct {
 		ResourceSize string `json:"resource_size"`
@@ -174,7 +222,7 @@ func (h *ContainerHandler) Update(c *echo.Context) error {
 		return badRequest(c, err.Error())
 	}
 
-	if err := h.svc.Update(c.Request().Context(), projectID, containerID, req.ResourceSize); err != nil {
+	if err := h.svc.Update(c.Request().Context(), projectID, containerID, userID, req.ResourceSize); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OK(c, map[string]interface{}{})
@@ -320,6 +368,8 @@ func containerSummaryJSON(c *model.Container) map[string]interface{} {
 		"active_deploy_workflow_id": c.ActiveDeployWorkflowID,
 		"active_scale_workflow_id":  c.ActiveScaleWorkflowID,
 		"is_template":               c.IsTemplate,
+		"is_image_deploy":           c.IsImageDeploy,
+		"image_ref":                 c.ImageRef,
 		"pods":                      pods,
 		"created_at":                c.CreatedAt,
 		"updated_at":                c.UpdatedAt,
