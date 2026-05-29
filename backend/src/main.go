@@ -63,11 +63,13 @@ func main() {
 	snapshotRepo := repository.NewSnapshotRepository(db)
 	connectionRepo := repository.NewServiceConnectionRepository(db)
 	statusHistRepo := repository.NewContainerStatusHistoryRepository(db)
+	userQuotaRepo := repository.NewUserQuotaRepository(db)
 
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, buildJobRepo, snapshotRepo, temporalClient)
 	templateSvc := service.NewTemplateService(templateDir)
-	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, routeRepo, templateSvc, temporalClient)
+	quotaSvc := service.NewQuotaService(userQuotaRepo, containerRepo)
+	containerSvc := service.NewContainerService(projectRepo, containerRepo, envVarRepo, portRepo, buildJobRepo, volumeRepo, routeRepo, templateSvc, quotaSvc, temporalClient)
 	envVarSvc := service.NewEnvVarService(projectRepo, containerRepo, envVarRepo)
 	portSvc := service.NewPortService(projectRepo, containerRepo, portRepo)
 	routeSvc := service.NewRouteService(projectRepo, containerRepo, routeRepo, temporalClient)
@@ -92,6 +94,7 @@ func main() {
 	snapshotH := handler.NewSnapshotHandler(snapshotSvc)
 	connectionH := handler.NewConnectionHandler(connectionSvc)
 	webhookH := handler.NewWebhookHandler(containerSvc)
+	quotaH := handler.NewQuotaHandler(quotaSvc)
 
 	// Echo ルーター設定
 	e := echo.New()
@@ -166,10 +169,14 @@ func main() {
 	v1.PUT("/projects/:project_id/env-vars", envVarH.UpsertProject)
 	v1.DELETE("/projects/:project_id/env-vars", envVarH.DeleteProject)
 
+	// クォータ確認（認証必要）
+	v1.GET("/quota", quotaH.GetMyQuota)
+
 	// Containers
 	v1.GET("/projects/:project_id/containers", containerH.List)
 	v1.GET("/projects/:project_id/containers/:container_id", containerH.Get)
 	v1.POST("/projects/:project_id/containers/deploy", containerH.BuildDeploy)
+	v1.POST("/projects/:project_id/containers/deploy-image", containerH.DeployImage)
 	v1.POST("/projects/:project_id/containers/from-template", containerH.FromTemplate)
 	v1.PUT("/projects/:project_id/containers/:container_id", containerH.Update)
 	v1.DELETE("/projects/:project_id/containers/:container_id", containerH.Delete)
@@ -225,6 +232,10 @@ func main() {
 	// Service Connections（フロー可視化）
 	v1.GET("/projects/:project_id/connections", connectionH.List)
 
+	// 管理者API（X-Admin-Key ヘッダーで認証）
+	admin := e.Group("/api/v1/admin", middlewares.RequireAdminKey)
+	admin.PUT("/users/:user_id/quota", quotaH.SetQuota)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -237,6 +248,7 @@ func main() {
 // runMigrate は AutoMigrate で全テーブルを作成・更新します。
 func runMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		&model.UserQuota{},
 		&model.Project{},
 		&model.Container{},
 		&model.PodStatus{},
