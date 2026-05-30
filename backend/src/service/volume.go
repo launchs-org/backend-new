@@ -23,6 +23,7 @@ type volumeService struct {
 	projectRepo   repository.ProjectRepository
 	containerRepo repository.ContainerRepository
 	volumeRepo    repository.VolumeRepository
+	quotaSvc      QuotaService
 	temporal      client.Client
 }
 
@@ -31,12 +32,14 @@ func NewVolumeService(
 	projectRepo repository.ProjectRepository,
 	containerRepo repository.ContainerRepository,
 	volumeRepo repository.VolumeRepository,
+	quotaSvc QuotaService,
 	temporalClient client.Client,
 ) VolumeService {
 	return &volumeService{
 		projectRepo:   projectRepo,
 		containerRepo: containerRepo,
 		volumeRepo:    volumeRepo,
+		quotaSvc:      quotaSvc,
 		temporal:      temporalClient,
 	}
 }
@@ -59,6 +62,10 @@ func (s *volumeService) Create(ctx context.Context, userID string, projectID uui
 	}
 	if project.UserID != userID {
 		return "", "", &apperrors.ForbiddenError{Message: "access denied"}
+	}
+
+	if err := s.quotaSvc.CheckStorageQuota(ctx, userID, sizeMB); err != nil {
+		return "", "", err
 	}
 
 	volumeID := uuid.New()

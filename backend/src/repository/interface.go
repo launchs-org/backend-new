@@ -110,6 +110,8 @@ type VolumeRepository interface {
 	DeleteMount(ctx context.Context, volumeID, containerID uuid.UUID) error
 	FindMountsByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.VolumeMount, error)
 	FindMountsByVolumeID(ctx context.Context, volumeID uuid.UUID) ([]model.VolumeMount, error)
+	// SumSizeMBByUserID はユーザーの全プロジェクトのボリューム合計サイズ（MB）を返します。
+	SumSizeMBByUserID(ctx context.Context, userID string) (int, error)
 }
 
 // NetworkRouteRepository はネットワークルートの CRUD を抽象化します。

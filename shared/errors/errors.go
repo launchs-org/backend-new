@@ -62,3 +62,14 @@ type QuotaExceededError struct {
 func (e *QuotaExceededError) Error() string {
 	return fmt.Sprintf("quota exceeded for resource size %s: current=%d, max=%d", e.ResourceSize, e.Current, e.Max)
 }
+
+// StorageQuotaExceededError はユーザーのストレージクォータ上限を超えたときに返します（HTTP 429）。
+type StorageQuotaExceededError struct {
+	UsedMB      int
+	RequestedMB int
+	MaxMB       int
+}
+
+func (e *StorageQuotaExceededError) Error() string {
+	return fmt.Sprintf("storage quota exceeded: used=%dMB, requested=%dMB, max=%dMB", e.UsedMB, e.RequestedMB, e.MaxMB)
+}

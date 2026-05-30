@@ -40,24 +40,26 @@ func (h *QuotaHandler) SetQuota(c *echo.Context) error {
 	}
 
 	var req struct {
-		MaxSmall  int `json:"max_small"`
-		MaxMedium int `json:"max_medium"`
-		MaxLarge  int `json:"max_large"`
+		MaxSmall     int `json:"max_small"`
+		MaxMedium    int `json:"max_medium"`
+		MaxLarge     int `json:"max_large"`
+		MaxStorageMB int `json:"max_storage_mb"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, err.Error())
 	}
-	if req.MaxSmall < 0 || req.MaxMedium < 0 || req.MaxLarge < 0 {
+	if req.MaxSmall < 0 || req.MaxMedium < 0 || req.MaxLarge < 0 || req.MaxStorageMB < 0 {
 		return badRequest(c, "quota values must be non-negative")
 	}
 
-	if err := h.svc.SetQuota(c.Request().Context(), targetUserID, req.MaxSmall, req.MaxMedium, req.MaxLarge); err != nil {
+	if err := h.svc.SetQuota(c.Request().Context(), targetUserID, req.MaxSmall, req.MaxMedium, req.MaxLarge, req.MaxStorageMB); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OK(c, map[string]interface{}{
-		"user_id":    targetUserID,
-		"max_small":  req.MaxSmall,
-		"max_medium": req.MaxMedium,
-		"max_large":  req.MaxLarge,
+		"user_id":        targetUserID,
+		"max_small":      req.MaxSmall,
+		"max_medium":     req.MaxMedium,
+		"max_large":      req.MaxLarge,
+		"max_storage_mb": req.MaxStorageMB,
 	})
 }

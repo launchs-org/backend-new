@@ -23,16 +23,18 @@ type QuotaService interface {
 	CheckQuota(ctx context.Context, userID, resourceSize string) error
 	// CheckQuotaForUpdate はサイズ変更時にチェックします。旧サイズ分は除外して計算します。
 	CheckQuotaForUpdate(ctx context.Context, userID, oldSize, newSize string) error
-	SetQuota(ctx context.Context, userID string, maxSmall, maxMedium, maxLarge int) error
+	CheckStorageQuota(ctx context.Context, userID string, requestedMB int) error
+	SetQuota(ctx context.Context, userID string, maxSmall, maxMedium, maxLarge, maxStorageMB int) error
 }
 
 type quotaService struct {
 	quotaRepo     repository.UserQuotaRepository
 	containerRepo repository.ContainerRepository
+	volumeRepo    repository.VolumeRepository
 }
 
-func NewQuotaService(quotaRepo repository.UserQuotaRepository, containerRepo repository.ContainerRepository) QuotaService {
-	return &quotaService{quotaRepo: quotaRepo, containerRepo: containerRepo}
+func NewQuotaService(quotaRepo repository.UserQuotaRepository, containerRepo repository.ContainerRepository, volumeRepo repository.VolumeRepository) QuotaService {
+	return &quotaService{quotaRepo: quotaRepo, containerRepo: containerRepo, volumeRepo: volumeRepo}
 }
 
 func (s *quotaService) getLimits(ctx context.Context, userID string) (map[string]int, error) {
@@ -42,15 +44,17 @@ func (s *quotaService) getLimits(ctx context.Context, userID string) (map[string
 	}
 	if quota == nil {
 		return map[string]int{
-			"small":  config.DefaultQuotaSmall(),
-			"medium": config.DefaultQuotaMedium(),
-			"large":  config.DefaultQuotaLarge(),
+			"small":      config.DefaultQuotaSmall(),
+			"medium":     config.DefaultQuotaMedium(),
+			"large":      config.DefaultQuotaLarge(),
+			"storage_mb": config.DefaultQuotaStorageMB(),
 		}, nil
 	}
 	return map[string]int{
-		"small":  quota.MaxSmall,
-		"medium": quota.MaxMedium,
-		"large":  quota.MaxLarge,
+		"small":      quota.MaxSmall,
+		"medium":     quota.MaxMedium,
+		"large":      quota.MaxLarge,
+		"storage_mb": quota.MaxStorageMB,
 	}, nil
 }
 
@@ -63,6 +67,11 @@ func (s *quotaService) GetQuota(ctx context.Context, userID string) (*QuotaInfo,
 	if err != nil {
 		return nil, err
 	}
+	usedStorageMB, err := s.volumeRepo.SumSizeMBByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	usage["storage_mb"] = usedStorageMB
 	return &QuotaInfo{Usage: usage, Limits: limits}, nil
 }
 
@@ -111,7 +120,23 @@ func (s *quotaService) CheckQuotaForUpdate(ctx context.Context, userID, oldSize,
 	return nil
 }
 
-func (s *quotaService) SetQuota(ctx context.Context, userID string, maxSmall, maxMedium, maxLarge int) error {
+func (s *quotaService) CheckStorageQuota(ctx context.Context, userID string, requestedMB int) error {
+	limits, err := s.getLimits(ctx, userID)
+	if err != nil {
+		return err
+	}
+	usedMB, err := s.volumeRepo.SumSizeMBByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	maxMB := limits["storage_mb"]
+	if usedMB+requestedMB > maxMB {
+		return &apperrors.StorageQuotaExceededError{UsedMB: usedMB, RequestedMB: requestedMB, MaxMB: maxMB}
+	}
+	return nil
+}
+
+func (s *quotaService) SetQuota(ctx context.Context, userID string, maxSmall, maxMedium, maxLarge, maxStorageMB int) error {
 	existing, err := s.quotaRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return err
@@ -125,5 +150,6 @@ func (s *quotaService) SetQuota(ctx context.Context, userID string, maxSmall, ma
 	existing.MaxSmall = maxSmall
 	existing.MaxMedium = maxMedium
 	existing.MaxLarge = maxLarge
+	existing.MaxStorageMB = maxStorageMB
 	return s.quotaRepo.Upsert(ctx, existing)
 }

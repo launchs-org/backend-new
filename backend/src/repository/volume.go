@@ -61,3 +61,17 @@ func (r *volumeRepository) FindMountsByVolumeID(ctx context.Context, volumeID uu
 	err := r.db.WithContext(ctx).Where("volume_id = ?", volumeID).Find(&mounts).Error
 	return mounts, err
 }
+
+func (r *volumeRepository) SumSizeMBByUserID(ctx context.Context, userID string) (int, error) {
+	var total int
+	err := r.db.WithContext(ctx).
+		Model(&model.Volume{}).
+		Select("COALESCE(SUM(volumes.size_mb), 0)").
+		Joins("JOIN projects ON projects.id = volumes.project_id").
+		Where("projects.user_id = ?", userID).
+		Scan(&total).Error
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}

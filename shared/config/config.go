@@ -194,6 +194,11 @@ func DefaultQuotaLarge() int {
 	return getEnvInt("DEFAULT_QUOTA_LARGE", 1)
 }
 
+// DefaultQuotaStorageMB はユーザーごとのデフォルトストレージ上限（MB）を返します。
+func DefaultQuotaStorageMB() int {
+	return getEnvInt("DEFAULT_QUOTA_STORAGE_MB", 20480)
+}
+
 // AdminAPIKey は管理者API認証キーを返します。
 func AdminAPIKey() string {
 	return getEnv("ADMIN_API_KEY", "")
