@@ -22,6 +22,9 @@ const (
 	ContainerStatusScaling   ContainerStatus = "scaling"
 	ContainerStatusFailed    ContainerStatus = "failed"
 	ContainerStatusStopped   ContainerStatus = "stopped"
+	// ContainerStatusDeleting は削除処理中の状態です。
+	// K8s リソースが完全に削除されるまでこの状態を保ち、完了後に DB レコードも削除されます。
+	ContainerStatusDeleting  ContainerStatus = "deleting"
 )
 
 // Container は Kubernetes Deployment に対応するリソースです。

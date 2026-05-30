@@ -140,6 +140,7 @@ func RedeployWorkflow(ctx workflow.Context, input RedeployInput) error {
 }
 
 // DeleteContainerWorkflow はコンテナの Deployment を削除します。
+// K8s リソースが完全に削除された後に DB レコードを削除します。
 func DeleteContainerWorkflow(ctx workflow.Context, input DeleteContainerInput) error {
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 2 * time.Minute,
@@ -152,13 +153,13 @@ func DeleteContainerWorkflow(ctx workflow.Context, input DeleteContainerInput) e
 	dbAct := &activity.DBActivity{}
 	deployAct := &activity.DeploymentActivity{}
 
-	// 1. ステータスを stopped に変更
-	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus, input.ContainerID, "stopped").Get(ctx, nil); err != nil {
+	// 1. Kubernetes Deployment を削除
+	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentDelete, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
 		return err
 	}
 
-	// 2. Kubernetes Deployment を削除
-	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentDelete, input.Namespace, input.DeploymentName).Get(ctx, nil); err != nil {
+	// 2. 全リソース削除完了後に DB レコードを削除
+	if err := workflow.ExecuteActivity(ctx, dbAct.DBDeleteContainer, input.ContainerID).Get(ctx, nil); err != nil {
 		return err
 	}
 

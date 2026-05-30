@@ -121,12 +121,12 @@ func (s *projectService) Delete(ctx context.Context, userID string, id uuid.UUID
 	}
 
 	// すでに削除中ならエラー
-	if project.Status == "deleting" {
+	if project.Status == model.ProjectStatusDeleting {
 		return "", &apperrors.ConflictError{Resource: "project", ID: id.String()}
 	}
 
 	// プロジェクトを削除中にする
-	err = s.projectRepo.UpdateStatus(ctx,id, "deleting")
+	err = s.projectRepo.UpdateStatus(ctx, id, string(model.ProjectStatusDeleting))
 
 	// エラー処理
 	if err != nil {

@@ -14,6 +14,9 @@ const (
 	ProjectStatusActive      ProjectStatus = "active"
 	ProjectStatusTerminating ProjectStatus = "terminating"
 	ProjectStatusFailed      ProjectStatus = "failed"
+	// ProjectStatusDeleting は削除処理中の状態です。
+	// 全リソースが完全に削除されるまでこの状態を保ち、完了後に DB レコードも削除されます。
+	ProjectStatusDeleting    ProjectStatus = "deleting"
 )
 
 // Project は Launchs-org の最上位リソースです。

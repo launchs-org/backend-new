@@ -202,6 +202,36 @@ func (a *DBActivity) DBBuildDeploySpec(ctx context.Context, containerID uuid.UUI
 	}, nil
 }
 
+// DBDeleteContainer はコンテナおよび関連レコードを DB から削除します。
+// K8s リソースが完全に削除された後に呼び出されます。
+func (a *DBActivity) DBDeleteContainer(ctx context.Context, containerID uuid.UUID) error {
+	db := database.DB.WithContext(ctx)
+
+	tables := []interface{}{
+		&model.PodStatus{},
+		&model.ContainerStatusHistory{},
+		&model.ContainerLog{},
+		&model.ContainerMetric{},
+		&model.Deployment{},
+		&model.Image{},
+		&model.BuildJob{},
+		&model.NetworkRoute{},
+		&model.Port{},
+		&model.ContainerEnvVar{},
+		&model.ContainerSelectedProjectEnvVar{},
+		&model.VolumeMount{},
+	}
+	for _, m := range tables {
+		if err := db.Where("container_id = ?", containerID).Delete(m).Error; err != nil {
+			return fmt.Errorf("コンテナ関連データ削除エラー (%T): %w", m, err)
+		}
+	}
+	if err := db.Where("id = ?", containerID).Delete(&model.Container{}).Error; err != nil {
+		return fmt.Errorf("コンテナ削除エラー: %w", err)
+	}
+	return nil
+}
+
 // プロジェクトを削除するアクティビティ
 func (a *DBActivity) DBDeleteProject(ctx context.Context, projectID string) error {
 	db := database.DB.WithContext(ctx)

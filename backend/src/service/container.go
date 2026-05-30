@@ -733,20 +733,17 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		return "", &apperrors.ForbiddenError{Message: "access denied"}
 	}
 
+	if container.Status == model.ContainerStatusDeleting {
+		return "", &apperrors.ConflictError{Resource: "container", ID: containerID.String()}
+	}
+
 	project, err := s.projectRepo.FindByID(ctx, projectID)
 	if err != nil {
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
-	// 外部キー制約のある関連テーブルを先にまとめて削除
-	if err := s.buildJobRepo.DeleteByContainerID(ctx, containerID); err != nil {
-		return "", fmt.Errorf("failed to delete build jobs: %w", err)
-	}
-	if err := s.containerRepo.DeleteRelated(ctx, containerID); err != nil {
-		return "", fmt.Errorf("failed to delete related records: %w", err)
-	}
-	if err := s.containerRepo.Delete(ctx, containerID); err != nil {
-		return "", fmt.Errorf("failed to delete container: %w", err)
+	if err := s.containerRepo.UpdateStatus(ctx, containerID, string(model.ContainerStatusDeleting)); err != nil {
+		return "", fmt.Errorf("failed to update container status: %w", err)
 	}
 
 	wfOpts := client.StartWorkflowOptions{
@@ -760,6 +757,7 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		DeploymentName: model.GetDeploymentName(containerID),
 	})
 	if err != nil {
+		_ = s.containerRepo.UpdateStatus(ctx, containerID, string(model.ContainerStatusFailed))
 		return "", fmt.Errorf("failed to start DeleteContainerWorkflow: %w", err)
 	}
 
