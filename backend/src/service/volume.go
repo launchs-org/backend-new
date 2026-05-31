@@ -90,20 +90,25 @@ func (s *volumeService) Create(ctx context.Context, userID string, projectID uui
 
 	type createVolumeInput struct {
 		VolumeID    uuid.UUID `json:"VolumeID"`
+		ProjectID   uuid.UUID `json:"ProjectID"`
 		Namespace   string    `json:"Namespace"`
 		PVCName     string    `json:"PVCName"`
 		StorageSize string    `json:"StorageSize"`
+		Label       *string   `json:"Label"`
 	}
 
+	volLabel := name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("create-volume-%s", volumeID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateVolume, createVolumeInput{
 		VolumeID:    volumeID,
+		ProjectID:   projectID,
 		Namespace:   project.Namespace,
 		PVCName:     pvcName,
 		StorageSize: storageSizeStr,
+		Label:       &volLabel,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to start CreateVolumeWorkflow: %w", err)
@@ -132,18 +137,23 @@ func (s *volumeService) Delete(ctx context.Context, userID string, projectID, vo
 
 	type deleteVolumeInput struct {
 		VolumeID  uuid.UUID `json:"VolumeID"`
+		ProjectID uuid.UUID `json:"ProjectID"`
 		Namespace string    `json:"Namespace"`
 		PVCName   string    `json:"PVCName"`
+		Label     *string   `json:"Label"`
 	}
 
+	delVolLabel := volume.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("delete-volume-%s-%d", volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteVolume, deleteVolumeInput{
 		VolumeID:  volumeID,
+		ProjectID: projectID,
 		Namespace: project.Namespace,
 		PVCName:   pvcResourceName(volume.Name, volumeID),
+		Label:     &delVolLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start DeleteVolumeWorkflow: %w", err)
@@ -178,22 +188,27 @@ func (s *volumeService) Mount(ctx context.Context, userID string, projectID, con
 
 	type mountVolumeInput struct {
 		ContainerID uuid.UUID `json:"ContainerID"`
+		ProjectID   uuid.UUID `json:"ProjectID"`
 		Namespace   string    `json:"Namespace"`
 		VolumeID    uuid.UUID `json:"VolumeID"`
 		PVCName     string    `json:"PVCName"`
 		MountPath   string    `json:"MountPath"`
+		Label       *string   `json:"Label"`
 	}
 
+	mountLabel := volume.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("mount-volume-%s-%s-%d", containerID.String(), volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowMountVolume, mountVolumeInput{
 		ContainerID: containerID,
+		ProjectID:   projectID,
 		Namespace:   project.Namespace,
 		VolumeID:    volumeID,
 		PVCName:     pvcResourceName(volume.Name, volumeID),
 		MountPath:   mountPath,
+		Label:       &mountLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start MountVolumeWorkflow: %w", err)
@@ -222,20 +237,25 @@ func (s *volumeService) Unmount(ctx context.Context, userID string, projectID, c
 
 	type unmountVolumeInput struct {
 		ContainerID uuid.UUID `json:"ContainerID"`
+		ProjectID   uuid.UUID `json:"ProjectID"`
 		Namespace   string    `json:"Namespace"`
 		VolumeID    uuid.UUID `json:"VolumeID"`
 		PVCName     string    `json:"PVCName"`
+		Label       *string   `json:"Label"`
 	}
 
+	unmountLabel := volume.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("unmount-volume-%s-%s-%d", containerID.String(), volumeID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowUnmountVolume, unmountVolumeInput{
 		ContainerID: containerID,
+		ProjectID:   projectID,
 		Namespace:   project.Namespace,
 		VolumeID:    volumeID,
 		PVCName:     pvcResourceName(volume.Name, volumeID),
+		Label:       &unmountLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start UnmountVolumeWorkflow: %w", err)

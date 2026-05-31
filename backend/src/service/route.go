@@ -87,6 +87,7 @@ func (s *routeService) CreateService(ctx context.Context, userID string, project
 	}
 	type createServiceInput struct {
 		ContainerID uuid.UUID   `json:"ContainerID"`
+		ProjectID   uuid.UUID   `json:"ProjectID"`
 		RouteID     uuid.UUID   `json:"RouteID"`
 		ServiceSpec serviceSpec `json:"ServiceSpec"`
 	}
@@ -97,6 +98,7 @@ func (s *routeService) CreateService(ctx context.Context, userID string, project
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateService, createServiceInput{
 		ContainerID: containerID,
+		ProjectID:   projectID,
 		RouteID:     routeID,
 		ServiceSpec: serviceSpec{
 			Namespace: project.Namespace,
@@ -176,6 +178,7 @@ func (s *routeService) CreateIngress(ctx context.Context, userID string, project
 	}
 	type createIngressInput struct {
 		ContainerID uuid.UUID   `json:"ContainerID"`
+		ProjectID   uuid.UUID   `json:"ProjectID"`
 		IngressSpec ingressSpec `json:"IngressSpec"`
 	}
 
@@ -185,6 +188,7 @@ func (s *routeService) CreateIngress(ctx context.Context, userID string, project
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCreateIngress, createIngressInput{
 		ContainerID: containerID,
+		ProjectID:   projectID,
 		IngressSpec: ingressSpec{
 			Namespace:   project.Namespace,
 			Name:        ingressName,
@@ -227,22 +231,26 @@ func (s *routeService) Delete(ctx context.Context, userID string, projectID, con
 	if route.Type == string(model.NetworkRouteTypeIngress) {
 		type deleteIngressInput struct {
 			ContainerID uuid.UUID `json:"ContainerID"`
+			ProjectID   uuid.UUID `json:"ProjectID"`
 			Namespace   string    `json:"Namespace"`
 			IngressName string    `json:"IngressName"`
 		}
 		we, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteIngress, deleteIngressInput{
 			ContainerID: containerID,
+			ProjectID:   projectID,
 			Namespace:   project.Namespace,
 			IngressName: ingressResourceName(routeID),
 		})
 	} else {
 		type deleteServiceInput struct {
 			ContainerID uuid.UUID `json:"ContainerID"`
+			ProjectID   uuid.UUID `json:"ProjectID"`
 			Namespace   string    `json:"Namespace"`
 			ServiceName string    `json:"ServiceName"`
 		}
 		we, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeleteService, deleteServiceInput{
 			ContainerID: containerID,
+			ProjectID:   projectID,
 			Namespace:   project.Namespace,
 			ServiceName: serviceResourceName(routeID),
 		})

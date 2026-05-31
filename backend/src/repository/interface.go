@@ -170,3 +170,9 @@ type DeploymentRepository interface {
 	Create(ctx context.Context, deployment *model.Deployment) error
 	FindByContainerID(ctx context.Context, containerID uuid.UUID) ([]model.Deployment, error)
 }
+
+// WorkflowRunRepository はワークフロー実行記録の取得を抽象化します。
+type WorkflowRunRepository interface {
+	FindByProjectID(ctx context.Context, projectID uuid.UUID, limit int) ([]model.WorkflowRun, error)
+	FindEventsByRunID(ctx context.Context, runID uuid.UUID) ([]model.WorkflowRunEvent, error)
+}

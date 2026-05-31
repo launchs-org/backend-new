@@ -161,3 +161,9 @@ type SnapshotService interface {
 type ConnectionService interface {
 	List(ctx context.Context, userID string, projectID uuid.UUID) ([]model.ServiceConnection, error)
 }
+
+// WorkflowRunService はワークフロー実行記録の取得を抽象化します。
+type WorkflowRunService interface {
+	List(ctx context.Context, userID string, projectID uuid.UUID, limit int) ([]model.WorkflowRun, error)
+	GetEvents(ctx context.Context, userID string, projectID uuid.UUID, runID uuid.UUID) ([]model.WorkflowRunEvent, error)
+}

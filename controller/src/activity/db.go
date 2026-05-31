@@ -351,3 +351,63 @@ func (a *DBActivity) DBCreateVolumeMountRecord(ctx context.Context, containerID,
 	}
 	return nil
 }
+
+// DBUpsertWorkflowRun は WorkflowRun レコードを作成または更新します。
+// workflowID が一致するレコードが存在する場合は status/log/updated_at を更新します。
+func (a *DBActivity) DBUpsertWorkflowRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	workflowID string,
+	workflowType string,
+	status string,
+	containerID *uuid.UUID,
+	label *string,
+	log *string,
+) error {
+	db := database.DB.WithContext(ctx)
+
+	var run model.WorkflowRun
+	err := db.Where("workflow_id = ?", workflowID).First(&run).Error
+	if err != nil {
+		// 新規作成
+		run = model.WorkflowRun{
+			ID:           uuid.New(),
+			ProjectID:    projectID,
+			WorkflowID:   workflowID,
+			WorkflowType: model.WorkflowRunType(workflowType),
+			Status:       model.WorkflowRunStatus(status),
+			ContainerID:  containerID,
+			Label:        label,
+			Log:          log,
+		}
+		if createErr := db.Create(&run).Error; createErr != nil {
+			return fmt.Errorf("WorkflowRun 作成エラー: %w", createErr)
+		}
+		event := model.WorkflowRunEvent{
+			ID:            uuid.New(),
+			WorkflowRunID: run.ID,
+			Status:        model.WorkflowRunStatus(status),
+			Message:       nil,
+		}
+		_ = db.Create(&event).Error
+		return nil
+	}
+
+	updates := map[string]interface{}{
+		"status": status,
+	}
+	if log != nil {
+		updates["log"] = log
+	}
+	if err := db.Model(&run).Updates(updates).Error; err != nil {
+		return fmt.Errorf("WorkflowRun 更新エラー: %w", err)
+	}
+	event := model.WorkflowRunEvent{
+		ID:            uuid.New(),
+		WorkflowRunID: run.ID,
+		Status:        model.WorkflowRunStatus(status),
+		Message:       log,
+	}
+	_ = db.Create(&event).Error
+	return nil
+}

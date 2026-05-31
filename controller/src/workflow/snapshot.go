@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"controller/activity"
+	"launchs/shared/model"
 
 	launchs_shared_temporal "launchs/shared/temporal"
 
@@ -24,6 +25,14 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 	}
 	ctx = workflow.WithActivityOptions(ctx, ao)
 
+	dbAct := &activity.DBActivity{}
+	wfID := workflow.GetInfo(ctx).WorkflowExecution.ID
+	wfType := string(model.WorkflowRunTypeRestoreSnapshot)
+
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBUpsertWorkflowRun,
+		input.ProjectID, wfID, wfType, string(model.WorkflowRunStatusRunning), nil, nil, nil,
+	).Get(ctx, nil)
+
 	futures := make([]workflow.Future, 0, len(input.SnapshotData.Containers))
 	for _, c := range input.SnapshotData.Containers {
 		// 環境変数を変換（プロジェクト変数を先に追加し、コンテナ変数で上書き）
@@ -35,13 +44,11 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 			envVars = append(envVars, activity.EnvVar{Key: e.Key, Value: e.Value})
 		}
 
-		// ポートを変換
 		ports := make([]activity.Port, 0, len(c.Ports))
 		for _, p := range c.Ports {
 			ports = append(ports, activity.Port{Port: p.Port, Protocol: p.Protocol})
 		}
 
-		// ボリュームマウントを変換
 		mounts := make([]activity.VolumeMount, 0, len(c.Mounts))
 		for _, m := range c.Mounts {
 			mounts = append(mounts, activity.VolumeMount{
@@ -50,11 +57,12 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 			})
 		}
 
-		// ContainerID を uuid.UUID にパース
 		containerID, _ := uuid.Parse(c.ContainerID)
+		label := c.ContainerName
 
 		deployInput := DeployInput{
 			ContainerID:    containerID,
+			ProjectID:      input.ProjectID,
 			Namespace:      input.Namespace,
 			DeploymentName: fmt.Sprintf("%s-%s", "container", c.ContainerID),
 			ImageRef:       c.ImageTag,
@@ -63,6 +71,7 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 			EnvVars:        envVars,
 			Ports:          ports,
 			VolumeMounts:   mounts,
+			Label:          &label,
 		}
 
 		cwo := workflow.ChildWorkflowOptions{
@@ -80,5 +89,17 @@ func RestoreSnapshotWorkflow(ctx workflow.Context, input RestoreSnapshotInput) e
 			lastErr = err
 		}
 	}
+
+	finalStatus := model.WorkflowRunStatusSucceeded
+	var logMsg *string
+	if lastErr != nil {
+		finalStatus = model.WorkflowRunStatusFailed
+		msg := lastErr.Error()
+		logMsg = &msg
+	}
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBUpsertWorkflowRun,
+		input.ProjectID, wfID, wfType, string(finalStatus), nil, nil, logMsg,
+	).Get(ctx, nil)
+
 	return lastErr
 }

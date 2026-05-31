@@ -23,55 +23,63 @@ import (
 // BuildDeployWorkflowInput は BuildDeployWorkflow の入力です。
 // builder の BuildWorkflowInput と JSON フィールド名を一致させます。
 type BuildDeployWorkflowInput struct {
-	ContainerID         string `json:"ContainerID"`
-	BuildJobID          string `json:"BuildJobID"`
-	ProjectID           string `json:"ProjectID"`
-	Namespace           string `json:"Namespace"`
-	GitRepo             string `json:"GitRepo"`
-	GitBranch           string `json:"GitBranch"`
-	GitCommit           string `json:"GitCommit"`
-	GitSubdir           string `json:"GitSubdir"`
-	HarborProjectName   string `json:"HarborProjectName"`
-	HarborRobotUsername string `json:"HarborRobotUsername"`
-	HarborRobotPassword string `json:"HarborRobotPassword"`
-	ResourceSize        string `json:"ResourceSize"`
-	Replicas            int    `json:"Replicas"`
+	ContainerID         string  `json:"ContainerID"`
+	BuildJobID          string  `json:"BuildJobID"`
+	ProjectID           string  `json:"ProjectID"`
+	Namespace           string  `json:"Namespace"`
+	GitRepo             string  `json:"GitRepo"`
+	GitBranch           string  `json:"GitBranch"`
+	GitCommit           string  `json:"GitCommit"`
+	GitSubdir           string  `json:"GitSubdir"`
+	HarborProjectName   string  `json:"HarborProjectName"`
+	HarborRobotUsername string  `json:"HarborRobotUsername"`
+	HarborRobotPassword string  `json:"HarborRobotPassword"`
+	ResourceSize        string  `json:"ResourceSize"`
+	Replicas            int     `json:"Replicas"`
+	Label               *string `json:"Label"`
 }
 
 // ScaleWorkflowInput は ScaleWorkflow の入力です。
 type ScaleWorkflowInput struct {
-	ContainerID    string `json:"ContainerID"`
-	Namespace      string `json:"Namespace"`
-	DeploymentName string `json:"DeploymentName"`
-	Replicas       int    `json:"Replicas"`
+	ContainerID    string  `json:"ContainerID"`
+	ProjectID      string  `json:"ProjectID"`
+	Namespace      string  `json:"Namespace"`
+	DeploymentName string  `json:"DeploymentName"`
+	Replicas       int     `json:"Replicas"`
+	Label          *string `json:"Label"`
 }
 
 // RedeployWorkflowInput は RedeployWorkflow の入力です。
 type RedeployWorkflowInput struct {
-	ContainerID    string `json:"ContainerID"`
-	Namespace      string `json:"Namespace"`
-	DeploymentName string `json:"DeploymentName"`
+	ContainerID    string  `json:"ContainerID"`
+	ProjectID      string  `json:"ProjectID"`
+	Namespace      string  `json:"Namespace"`
+	DeploymentName string  `json:"DeploymentName"`
+	Label          *string `json:"Label"`
 }
 
 // DeleteContainerWorkflowInput は DeleteContainerWorkflow の入力です。
 type DeleteContainerWorkflowInput struct {
-	ContainerID    string `json:"ContainerID"`
-	ProjectID      string `json:"ProjectID"`
-	Namespace      string `json:"Namespace"`
-	DeploymentName string `json:"DeploymentName"`
+	ContainerID    string  `json:"ContainerID"`
+	ProjectID      string  `json:"ProjectID"`
+	Namespace      string  `json:"Namespace"`
+	DeploymentName string  `json:"DeploymentName"`
+	Label          *string `json:"Label"`
 }
 
 // DeployWorkflowInput は DeployWorkflow への入力です。
 type DeployWorkflowInput struct {
-	ContainerID    string              `json:"ContainerID"`
-	Namespace      string              `json:"Namespace"`
-	DeploymentName string              `json:"DeploymentName"`
-	ImageRef       string              `json:"ImageRef"`
-	Replicas       int                 `json:"Replicas"`
-	ResourceSize   string              `json:"ResourceSize"`
-	EnvVars        []EnvVarWorkflow    `json:"EnvVars"`
-	Ports          []PortWorkflow      `json:"Ports"`
+	ContainerID    string                `json:"ContainerID"`
+	ProjectID      string                `json:"ProjectID"`
+	Namespace      string                `json:"Namespace"`
+	DeploymentName string                `json:"DeploymentName"`
+	ImageRef       string                `json:"ImageRef"`
+	Replicas       int                   `json:"Replicas"`
+	ResourceSize   string                `json:"ResourceSize"`
+	EnvVars        []EnvVarWorkflow      `json:"EnvVars"`
+	Ports          []PortWorkflow        `json:"Ports"`
 	VolumeMounts   []VolumeMountWorkflow `json:"VolumeMounts"`
+	Label          *string               `json:"Label"`
 }
 
 // EnvVarWorkflow はワークフロー用環境変数です。
@@ -108,19 +116,21 @@ type RouteRecordWorkflow struct {
 
 // DeployTemplateWorkflowInput は DeployTemplateWorkflow への入力です。
 type DeployTemplateWorkflowInput struct {
-	ContainerID     string                `json:"ContainerID"`
-	Namespace       string                `json:"Namespace"`
-	DeploymentName  string                `json:"DeploymentName"`
-	ImageRef        string                `json:"ImageRef"`
-	ResourceSize    string                `json:"ResourceSize"`
-	Replicas        int                   `json:"Replicas"`
-	EnvVars         []EnvVarWorkflow      `json:"EnvVars"`
+	ContainerID    string                `json:"ContainerID"`
+	ProjectID      string                `json:"ProjectID"`
+	Namespace      string                `json:"Namespace"`
+	DeploymentName string                `json:"DeploymentName"`
+	ImageRef       string                `json:"ImageRef"`
+	ResourceSize   string                `json:"ResourceSize"`
+	Replicas       int                   `json:"Replicas"`
+	EnvVars        []EnvVarWorkflow      `json:"EnvVars"`
+	Label          *string               `json:"Label"`
 	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
 	VolumeRecord    *VolumeRecordWorkflow `json:"VolumeRecord"`
 	VolumeMountPath string                `json:"VolumeMountPath"`
 	// ExistingVolumeMounts は既存ボリュームのマウント情報（PVC 作成不要）
 	ExistingVolumeMounts []VolumeMountWorkflow `json:"ExistingVolumeMounts"`
-	RouteRecords    []RouteRecordWorkflow `json:"RouteRecords"`
+	RouteRecords         []RouteRecordWorkflow `json:"RouteRecords"`
 }
 
 type containerService struct {
@@ -228,17 +238,20 @@ func (s *containerService) DeployImage(ctx context.Context, projectID uuid.UUID,
 		}
 	}
 
+	containerLabel := req.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("deploy-image-%s", containerID.String()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowDeploy, DeployWorkflowInput{
 		ContainerID:    containerID.String(),
+		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
 		DeploymentName: model.GetDeploymentName(containerID),
 		ImageRef:       req.Image,
 		Replicas:       replicas,
 		ResourceSize:   resourceSize,
+		Label:          &containerLabel,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to start DeployWorkflow: %w", err)
@@ -364,6 +377,7 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		return nil, "", fmt.Errorf("failed to create build job: %w", err)
 	}
 
+	buildLabel := req.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("build-deploy-%s", containerID.String()),
 		TaskQueue: temporal.BuilderQueue,
@@ -382,6 +396,7 @@ func (s *containerService) BuildDeploy(ctx context.Context, projectID uuid.UUID,
 		HarborRobotPassword: project.HarborRobotPassword,
 		ResourceSize:        resourceSize,
 		Replicas:            replicas,
+		Label:               &buildLabel,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to start BuildDeployWorkflow: %w", err)
@@ -538,14 +553,17 @@ func (s *containerService) DeployFromTemplate(ctx context.Context, projectID uui
 		fmt.Printf("[warn] failed to inject template project env vars: %v\n", err)
 	}
 
+	templateLabel := req.Name
 	input := DeployTemplateWorkflowInput{
 		ContainerID:          containerID.String(),
+		ProjectID:            projectID.String(),
 		Namespace:            project.Namespace,
 		DeploymentName:       model.GetDeploymentName(containerID),
 		ImageRef:             tmpl.Image,
 		ResourceSize:         resourceSize,
 		Replicas:             replicas,
 		EnvVars:              envVars,
+		Label:                &templateLabel,
 		VolumeRecord:         volumeRecord,
 		VolumeMountPath:      volumeMountPath,
 		ExistingVolumeMounts: existingVolumeMounts,
@@ -583,15 +601,18 @@ func (s *containerService) Scale(ctx context.Context, projectID, containerID uui
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
+	scaleLabel := container.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("scale-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowScale, ScaleWorkflowInput{
 		ContainerID:    containerID.String(),
+		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
 		DeploymentName: model.GetDeploymentName(containerID),
 		Replicas:       replicas,
+		Label:          &scaleLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start ScaleWorkflow: %w", err)
@@ -619,14 +640,17 @@ func (s *containerService) Redeploy(ctx context.Context, projectID, containerID 
 		return "", &apperrors.NotFoundError{Resource: "project", ID: projectID.String()}
 	}
 
+	redeployLabel := container.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("redeploy-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
 	}
 	we, err := s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    containerID.String(),
+		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
 		DeploymentName: model.GetDeploymentName(containerID),
+		Label:          &redeployLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start RedeployWorkflow: %w", err)
@@ -691,6 +715,7 @@ func (s *containerService) Rebuild(ctx context.Context, projectID, containerID u
 		return "", fmt.Errorf("failed to create build job: %w", err)
 	}
 
+	rebuildLabel := container.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("build-deploy-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.BuilderQueue,
@@ -708,6 +733,7 @@ func (s *containerService) Rebuild(ctx context.Context, projectID, containerID u
 		HarborRobotPassword: project.HarborRobotPassword,
 		ResourceSize:        container.ResourceSize,
 		Replicas:            container.Replicas,
+		Label:               &rebuildLabel,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to start BuildDeployWorkflow: %w", err)
@@ -746,6 +772,7 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		return "", fmt.Errorf("failed to update container status: %w", err)
 	}
 
+	deleteLabel := container.Name
 	wfOpts := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("delete-container-%s-%d", containerID.String(), time.Now().UnixNano()),
 		TaskQueue: temporal.ControllerQueue,
@@ -755,6 +782,7 @@ func (s *containerService) Delete(ctx context.Context, projectID, containerID uu
 		ProjectID:      projectID.String(),
 		Namespace:      project.Namespace,
 		DeploymentName: model.GetDeploymentName(containerID),
+		Label:          &deleteLabel,
 	})
 	if err != nil {
 		_ = s.containerRepo.UpdateStatus(ctx, containerID, string(model.ContainerStatusFailed))
@@ -818,10 +846,13 @@ func (s *containerService) HandleWebhook(ctx context.Context, token string) erro
 		return &apperrors.NotFoundError{Resource: "project", ID: container.ProjectID.String()}
 	}
 
+	webhookLabel := container.Name
 	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowRedeploy, RedeployWorkflowInput{
 		ContainerID:    container.ID.String(),
+		ProjectID:      container.ProjectID.String(),
 		Namespace:      project.Namespace,
 		DeploymentName: model.GetDeploymentName(container.ID),
+		Label:          &webhookLabel,
 	})
 	return err
 }

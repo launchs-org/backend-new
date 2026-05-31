@@ -24,6 +24,7 @@ type DeleteProjectInput struct {
 // DeployInput は DeployWorkflow への入力です。
 type DeployInput struct {
 	ContainerID    uuid.UUID
+	ProjectID      uuid.UUID
 	Namespace      string
 	DeploymentName string
 	ImageRef       string
@@ -37,88 +38,112 @@ type DeployInput struct {
 	EnvVars       []activity.EnvVar
 	Ports         []activity.Port
 	VolumeMounts  []activity.VolumeMount
+	// Label は WorkflowRun の表示用補足情報（コンテナ名など）
+	Label *string
 }
 
 // RedeployInput は RedeployWorkflow への入力です。
 type RedeployInput struct {
 	ContainerID    uuid.UUID
+	ProjectID      uuid.UUID
 	Namespace      string
 	DeploymentName string
+	Label          *string
 }
 
 // DeleteContainerInput は DeleteContainerWorkflow への入力です。
 type DeleteContainerInput struct {
 	ContainerID    uuid.UUID
+	ProjectID      uuid.UUID
 	Namespace      string
 	DeploymentName string
+	Label          *string
 }
 
 // ScaleInput は ScaleWorkflow への入力です。
 type ScaleInput struct {
 	ContainerID    uuid.UUID
+	ProjectID      uuid.UUID
 	Namespace      string
 	DeploymentName string
 	Replicas       int
+	Label          *string
 }
 
 // CreateVolumeInput は CreateVolumeWorkflow への入力です。
 type CreateVolumeInput struct {
 	VolumeID    uuid.UUID
+	ProjectID   uuid.UUID
 	Namespace   string
 	PVCName     string
 	StorageSize string
+	Label       *string
 }
 
 // DeleteVolumeInput は DeleteVolumeWorkflow への入力です。
 type DeleteVolumeInput struct {
 	VolumeID  uuid.UUID
+	ProjectID uuid.UUID
 	Namespace string
 	PVCName   string
+	Label     *string
 }
 
 // MountVolumeInput は MountVolumeWorkflow への入力です。
 // ワークフロー内で DB からコンテナ情報を取得して Deployment を再 Apply します。
 type MountVolumeInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	Namespace   string
 	VolumeID    uuid.UUID
 	PVCName     string
 	MountPath   string
+	Label       *string
 }
 
 // UnmountVolumeInput は UnmountVolumeWorkflow への入力です。
 type UnmountVolumeInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	Namespace   string
 	VolumeID    uuid.UUID
 	PVCName     string
+	Label       *string
 }
 
 // CreateServiceInput は CreateServiceWorkflow への入力です。
 type CreateServiceInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	RouteID     uuid.UUID
 	ServiceSpec activity.ServiceSpec
+	Label       *string
 }
 
 // DeleteServiceInput は DeleteServiceWorkflow への入力です。
 type DeleteServiceInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	Namespace   string
 	ServiceName string
+	Label       *string
 }
 
 // CreateIngressInput は CreateIngressWorkflow への入力です。
 type CreateIngressInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	IngressSpec activity.IngressSpec
+	Label       *string
 }
 
 // DeleteIngressInput は DeleteIngressWorkflow への入力です。
 type DeleteIngressInput struct {
 	ContainerID uuid.UUID
+	ProjectID   uuid.UUID
 	Namespace   string
 	IngressName string
+	Label       *string
 }
 
 // DeployProjectInput は DeployProjectWorkflow への入力です。
@@ -157,17 +182,19 @@ type RouteRecordInput struct {
 
 // DeployTemplateInput は DeployTemplateWorkflow への入力です。
 type DeployTemplateInput struct {
-	ContainerID     uuid.UUID
-	Namespace       string
-	DeploymentName  string
-	ImageRef        string
-	ResourceSize    string
-	Replicas        int
-	EnvVars         []activity.EnvVar
+	ContainerID    uuid.UUID
+	ProjectID      uuid.UUID
+	Namespace      string
+	DeploymentName string
+	ImageRef       string
+	ResourceSize   string
+	Replicas       int
+	EnvVars        []activity.EnvVar
+	Label          *string
 	// VolumeRecord は新規作成するボリュームの情報（nil の場合は作成しない）
-	VolumeRecord         *VolumeRecordInput
-	VolumeMountPath      string
+	VolumeRecord    *VolumeRecordInput
+	VolumeMountPath string
 	// ExistingVolumeMounts は既存ボリュームのマウント情報（PVC 作成不要）
 	ExistingVolumeMounts []activity.VolumeMount
-	RouteRecords    []RouteRecordInput
+	RouteRecords         []RouteRecordInput
 }

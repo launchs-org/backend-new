@@ -64,6 +64,7 @@ func main() {
 	connectionRepo := repository.NewServiceConnectionRepository(db)
 	statusHistRepo := repository.NewContainerStatusHistoryRepository(db)
 	userQuotaRepo := repository.NewUserQuotaRepository(db)
+	workflowRunRepo := repository.NewWorkflowRunRepository()
 
 	// Service 初期化（DI）
 	projectSvc := service.NewProjectService(projectRepo, containerRepo, buildJobRepo, snapshotRepo, temporalClient)
@@ -79,6 +80,7 @@ func main() {
 	buildJobSvc := service.NewBuildJobService(projectRepo, containerRepo, buildJobRepo, temporalClient)
 	snapshotSvc := service.NewSnapshotService(projectRepo, containerRepo, snapshotRepo, temporalClient)
 	connectionSvc := service.NewConnectionService(projectRepo, connectionRepo)
+	workflowRunSvc := service.NewWorkflowRunService(projectRepo, workflowRunRepo)
 
 	// Handler 初期化
 	projectH := handler.NewProjectHandler(projectSvc)
@@ -95,6 +97,7 @@ func main() {
 	connectionH := handler.NewConnectionHandler(connectionSvc)
 	webhookH := handler.NewWebhookHandler(containerSvc)
 	quotaH := handler.NewQuotaHandler(quotaSvc)
+	workflowRunH := handler.NewWorkflowRunHandler(workflowRunSvc)
 
 	// Echo ルーター設定
 	e := echo.New()
@@ -163,6 +166,8 @@ func main() {
 	v1.DELETE("/projects/:project_id", projectH.Delete)
 	v1.POST("/projects/:project_id/deploy", projectH.Deploy)
 	v1.GET("/projects/:project_id/jobs", projectH.GetJobs)
+	v1.GET("/projects/:project_id/workflow-runs", workflowRunH.List)
+	v1.GET("/projects/:project_id/workflow-runs/:run_id/events", workflowRunH.GetEvents)
 
 	// Project Env Vars
 	v1.GET("/projects/:project_id/env-vars", envVarH.ListProject)
@@ -267,6 +272,8 @@ func runMigrate(db *gorm.DB) error {
 		&model.ContainerMetric{},
 		&model.Snapshot{},
 		&model.ServiceConnection{},
+		&model.WorkflowRun{},
+		&model.WorkflowRunEvent{},
 	)
 }
 

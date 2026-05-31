@@ -15,13 +15,6 @@ import (
 )
 
 // DeployTemplateWorkflow はテンプレートからコンテナを作成する統合ワークフローです。
-// 以下の順序でアクティビティを実行します:
-//  1. コンテナステータスを deploying に更新
-//  2. ボリューム PVC 作成 + DB マウントレコード作成（VolumeRecord が nil でない場合）
-//  3. Deployment Apply
-//  4. ステータスを running に更新
-//  5. K8s Service 作成（RouteRecords が空でない場合）
-//  6. ワークフロー ID クリア
 func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) error {
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
@@ -36,20 +29,35 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 	deployAct := &activity.DeploymentActivity{}
 	svcAct := &activity.ServiceActivity{}
 
+	wfID := workflow.GetInfo(ctx).WorkflowExecution.ID
+	wfType := string(model.WorkflowRunTypeDeployTemplate)
+	containerID := input.ContainerID
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBUpsertWorkflowRun,
+		input.ProjectID, wfID, wfType, string(model.WorkflowRunStatusRunning), &containerID, input.Label, nil,
+	).Get(ctx, nil)
+
+	failRun := func(err error) {
+		msg := err.Error()
+		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpsertWorkflowRun,
+			input.ProjectID, wfID, wfType, string(model.WorkflowRunStatusFailed), &containerID, input.Label, &msg,
+		).Get(ctx, nil)
+	}
+
 	// 1. ステータスを deploying に変更
 	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus,
 		input.ContainerID, model.ContainerStatusDeploying).Get(ctx, nil); err != nil {
+		failRun(err)
 		return err
 	}
 
 	// 2. ボリューム PVC 作成 + 既存ボリュームのマウント設定
 	volumeMounts := make([]activity.VolumeMount, 0)
-	// 既存ボリューム（PVC 作成不要）をマウントリストに追加
 	volumeMounts = append(volumeMounts, input.ExistingVolumeMounts...)
 
 	if input.VolumeRecord != nil {
 		volumeID, err := uuid.Parse(input.VolumeRecord.ID)
 		if err != nil {
+			failRun(fmt.Errorf("invalid volume ID: %w", err))
 			return fmt.Errorf("invalid volume ID: %w", err)
 		}
 
@@ -63,16 +71,19 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 		if err := workflow.ExecuteActivity(ctx, pvcAct.PVCCreate, pvcSpec).Get(ctx, nil); err != nil {
 			_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus,
 				input.ContainerID, model.ContainerStatusFailed).Get(ctx, nil)
+			failRun(fmt.Errorf("PVC 作成失敗: %w", err))
 			return fmt.Errorf("PVC 作成失敗: %w", err)
 		}
 
 		if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateVolumeStatus,
 			volumeID, "created").Get(ctx, nil); err != nil {
+			failRun(err)
 			return err
 		}
 
 		if err := workflow.ExecuteActivity(ctx, dbAct.DBCreateVolumeMountRecord,
 			input.ContainerID, volumeID, input.VolumeMountPath).Get(ctx, nil); err != nil {
+			failRun(err)
 			return err
 		}
 
@@ -89,7 +100,6 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 		size = sizes["small"]
 	}
 
-	// ポート定義を組み立て（コンテナ内ポート）
 	ports := make([]activity.Port, 0, len(input.RouteRecords))
 	for _, r := range input.RouteRecords {
 		ports = append(ports, activity.Port{Port: r.Port, Protocol: r.Protocol})
@@ -121,12 +131,14 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 	if err := workflow.ExecuteActivity(ctx, deployAct.DeploymentApply, spec).Get(ctx, nil); err != nil {
 		_ = workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus,
 			input.ContainerID, model.ContainerStatusFailed).Get(ctx, nil)
+		failRun(fmt.Errorf("Deployment Apply 失敗: %w", err))
 		return fmt.Errorf("Deployment Apply 失敗: %w", err)
 	}
 
 	// 4. ステータスを running に変更
 	if err := workflow.ExecuteActivity(ctx, dbAct.DBUpdateContainerStatus,
 		input.ContainerID, model.ContainerStatusRunning).Get(ctx, nil); err != nil {
+		failRun(err)
 		return err
 	}
 
@@ -150,7 +162,6 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 
 		var clusterIP string
 		if err := workflow.ExecuteActivity(ctx, svcAct.ServiceApply, svcSpec).Get(ctx, &clusterIP); err != nil {
-			// Service 作成失敗はデプロイを止めない（警告ログのみ）
 			workflow.GetLogger(ctx).Warn("Service 作成失敗（続行）",
 				"port", route.Port, "error", err)
 			continue
@@ -166,6 +177,10 @@ func DeployTemplateWorkflow(ctx workflow.Context, input DeployTemplateInput) err
 	// 6. ワークフロー ID クリア
 	_ = workflow.ExecuteActivity(ctx, dbAct.DBClearContainerWorkflowID,
 		input.ContainerID).Get(ctx, nil)
+
+	_ = workflow.ExecuteActivity(ctx, dbAct.DBUpsertWorkflowRun,
+		input.ProjectID, wfID, wfType, string(model.WorkflowRunStatusSucceeded), &containerID, input.Label, nil,
+	).Get(ctx, nil)
 
 	return nil
 }

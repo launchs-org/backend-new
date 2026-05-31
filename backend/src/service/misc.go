@@ -195,12 +195,23 @@ func (s *buildJobService) Cancel(ctx context.Context, userID string, projectID, 
 	if job.TemporalWorkflowID != nil {
 		temporalWorkflowID = *job.TemporalWorkflowID
 	}
+
+	container, _ := s.containerRepo.FindByID(ctx, job.ContainerID)
+	var cancelLabel *string
+	if container != nil {
+		l := container.Name
+		cancelLabel = &l
+	}
+
 	wfOpts := client.StartWorkflowOptions{
 		TaskQueue: temporal.BuilderQueue,
 	}
 	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCancelBuild, temporal.CancelBuildInput{
 		BuildJobID:         buildJobID.String(),
 		TemporalWorkflowID: temporalWorkflowID,
+		ProjectID:          projectID.String(),
+		ContainerID:        job.ContainerID.String(),
+		Label:              cancelLabel,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start CancelBuildWorkflow: %w", err)

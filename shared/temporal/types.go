@@ -5,4 +5,8 @@ package temporal
 type CancelBuildInput struct {
 	BuildJobID         string
 	TemporalWorkflowID string
+	// ProjectID は WorkflowRun 追跡用（オプション）
+	ProjectID   string
+	ContainerID string
+	Label       *string
 }
