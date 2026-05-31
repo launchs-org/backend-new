@@ -10,10 +10,11 @@ import (
 type BuildJobStatus string
 
 const (
-	BuildJobStatusPending  BuildJobStatus = "pending"
-	BuildJobStatusRunning  BuildJobStatus = "running"
-	BuildJobStatusComplete BuildJobStatus = "complete"
-	BuildJobStatusFailed   BuildJobStatus = "failed"
+	BuildJobStatusPending   BuildJobStatus = "pending"
+	BuildJobStatusRunning   BuildJobStatus = "running"
+	BuildJobStatusCanceling BuildJobStatus = "canceling"
+	BuildJobStatusComplete  BuildJobStatus = "complete"
+	BuildJobStatusFailed    BuildJobStatus = "failed"
 )
 
 // BuildJob は railpack / BuildKit によるイメージビルドの実行記録です。

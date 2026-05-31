@@ -44,6 +44,7 @@ func (r *buildJobRepository) FindActiveByContainerID(ctx context.Context, contai
 		Where("container_id = ? AND status IN ?", containerID, []string{
 			string(model.BuildJobStatusPending),
 			string(model.BuildJobStatusRunning),
+			string(model.BuildJobStatusCanceling),
 		}).
 		Find(&jobs).Error
 	return jobs, err

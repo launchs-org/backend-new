@@ -44,11 +44,12 @@ func main() {
 	w := worker.New(temporalClient, launchs_temporal.BuilderQueue, worker.Options{})
 
 	// アクティビティ登録
-	buildAct := &activity.BuildActivity{}
+	buildAct := &activity.BuildActivity{TemporalClient: temporalClient}
 	w.RegisterActivity(buildAct)
 
 	// ワークフロー登録
 	w.RegisterWorkflow(workflow.BuildDeployWorkflow)
+	w.RegisterWorkflow(workflow.CancelBuildWorkflow)
 
 	// ワーカー起動（非ブロッキング）
 	if err := w.Start(); err != nil {

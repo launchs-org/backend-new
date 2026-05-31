@@ -14,6 +14,7 @@ import (
 	"launchs/shared/model"
 
 	"github.com/google/uuid"
+	temporalclient "go.temporal.io/sdk/client"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -38,7 +39,10 @@ type BuildResult struct {
 }
 
 // BuildActivity は railpack を使ってコンテナイメージをビルドします。
-type BuildActivity struct{}
+type BuildActivity struct {
+	TemporalClient temporalclient.Client
+}
+
 
 // Build はイメージをビルドして Harbor にプッシュします。
 // ビルドログは DB（ContainerLog）にバッファリングして保存します。
@@ -195,4 +199,31 @@ func (a *BuildActivity) DeleteBuildK8sJob(ctx context.Context, buildJobID string
 		return nil
 	}
 	return nil
+}
+
+// CancelTemporalWorkflow は実行中の Temporal ワークフローにキャンセルシグナルを送ります。
+func (a *BuildActivity) CancelTemporalWorkflow(ctx context.Context, workflowID string) error {
+	if a.TemporalClient == nil {
+		return nil
+	}
+	if err := a.TemporalClient.CancelWorkflow(ctx, workflowID, ""); err != nil {
+		// すでに完了・キャンセル済みの場合は無視
+		return nil
+	}
+	return nil
+}
+
+// FinishBuildJob は BuildJob の finished_at を記録し、ステータスを failed に更新します。
+func (a *BuildActivity) FinishBuildJob(ctx context.Context, buildJobID string) error {
+	id, err := uuid.Parse(buildJobID)
+	if err != nil {
+		return fmt.Errorf("invalid buildJobID: %w", err)
+	}
+	now := time.Now()
+	return database.DB.WithContext(ctx).Model(&model.BuildJob{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"status":      string(model.BuildJobStatusFailed),
+			"finished_at": &now,
+		}).Error
 }

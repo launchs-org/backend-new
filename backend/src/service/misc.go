@@ -184,14 +184,29 @@ func (s *buildJobService) Cancel(ctx context.Context, userID string, projectID, 
 		return &apperrors.NotFoundError{Resource: "build_job", ID: buildJobID.String()}
 	}
 
-	if job.TemporalWorkflowID != nil {
-		// Temporal ワークフローをキャンセルします
-		if err := s.temporal.CancelWorkflow(ctx, *job.TemporalWorkflowID, ""); err != nil {
-			return fmt.Errorf("failed to cancel workflow: %w", err)
-		}
+	// ステータスを canceling に更新してフロントに即座に反映
+	if err := s.buildJobRepo.UpdateStatus(ctx, buildJobID, string(model.BuildJobStatusCanceling)); err != nil {
+		return fmt.Errorf("failed to update status to canceling: %w", err)
 	}
 
-	return s.buildJobRepo.UpdateStatus(ctx, buildJobID, string(model.BuildJobStatusFailed))
+	// CancelBuildWorkflow を builder キューで非同期起動
+	// K8s Job 削除・Temporal キャンセル・DB ステータス failed 更新をすべて builder 側で実行する
+	temporalWorkflowID := ""
+	if job.TemporalWorkflowID != nil {
+		temporalWorkflowID = *job.TemporalWorkflowID
+	}
+	wfOpts := client.StartWorkflowOptions{
+		TaskQueue: temporal.BuilderQueue,
+	}
+	_, err = s.temporal.ExecuteWorkflow(ctx, wfOpts, temporal.WorkflowCancelBuild, temporal.CancelBuildInput{
+		BuildJobID:         buildJobID.String(),
+		TemporalWorkflowID: temporalWorkflowID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start CancelBuildWorkflow: %w", err)
+	}
+
+	return nil
 }
 
 // ---- template service ----
